@@ -381,8 +381,18 @@
 
         const mergeWithDefaults = (loadedData) => {
             const defaults = generateDefaultData();
+            // Restore missing Models and Services to ensure UI is full
             Object.keys(defaults).forEach(m => {
-                if (!loadedData[m]) loadedData[m] = defaults[m];
+                if (!loadedData[m]) {
+                    loadedData[m] = defaults[m];
+                } else {
+                    // If Model exists, ensure all default services also exist (restore from sparse data)
+                    Object.keys(defaults[m]).forEach(s => {
+                        if (!loadedData[m][s]) {
+                            loadedData[m][s] = defaults[m][s];
+                        }
+                    });
+                }
             });
             return loadedData;
         };
@@ -392,10 +402,32 @@
             localStorage.setItem('local_pricing_data_v8', JSON.stringify(newData));
             if (isOnline && db) {
                 try {
+                    // COMPRESSION: Remove default/empty entries before saving to Cloud
+                    const dataToSave = JSON.parse(JSON.stringify(newData));
+                    const defaults = generateDefaultData();
+                    
+                    Object.keys(dataToSave).forEach(m => {
+                        if(defaults[m]) { 
+                            Object.keys(dataToSave[m]).forEach(s => {
+                                if(defaults[m][s]) { 
+                                     const q = dataToSave[m][s]["Standard Grade"];
+                                     // If matched default signature, delete it to save space
+                                     if(q && q.price === 0 && q.warranty === "6 Tháng" && (q.notes === "Chưa có thông tin" || q.notes === "") && Object.keys(dataToSave[m][s]).length === 1) {
+                                         delete dataToSave[m][s];
+                                     }
+                                }
+                            });
+                            if(Object.keys(dataToSave[m]).length === 0) delete dataToSave[m];
+                        }
+                    });
+
                     const { doc, setDoc } = window.fbModules;
-                    await setDoc(doc(db, COLLECTION_PATH, DOC_ID), { data: newData });
+                    await setDoc(doc(db, COLLECTION_PATH, DOC_ID), { data: dataToSave });
                     showToast("Đã lưu lên Cloud");
-                } catch (e) { showToast("Lỗi lưu Cloud!", false); }
+                } catch (e) { 
+                    console.error(e);
+                    showToast("Lỗi lưu Cloud: " + e.code, false); 
+                }
             } else { showToast("Đã lưu Offline"); }
         };
 
