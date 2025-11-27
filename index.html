@@ -526,11 +526,11 @@
                     Object.keys(priceStructure[model][service]).forEach(quality => {
                         const item = priceStructure[model][service][quality];
                         const row = [
-                            `"${model}"`,
-                            `"${service}"`,
-                            `"${quality}"`,
+                            `"${model.replace(/"/g, '""')}"`,
+                            `"${service.replace(/"/g, '""')}"`,
+                            `"${quality.replace(/"/g, '""')}"`,
                             `${item.price}`,
-                            `"${item.warranty}"`,
+                            `"${item.warranty.replace(/"/g, '""')}"`,
                             `"${item.notes.replace(/"/g, '""')}"` 
                         ];
                         csvContent += row.join(",") + "\n";
@@ -559,6 +559,21 @@
             let temp = JSON.parse(JSON.stringify(priceStructure));
 
             const parseCSVLine = (text) => {
+                const re_valid = /^\s*(?:'[^'\\]*(?:\\[\S\s][^'\\]*)*'|"[^"\\]*(?:\\[\S\s][^"\\]*)*"|[^,'"\s\\]*(?:\s+[^,'"\s\\]+)*)\s*(?:,\s*(?:'[^'\\]*(?:\\[\S\s][^'\\]*)*'|"[^"\\]*(?:\\[\S\s][^"\\]*)*"|[^,'"\s\\]*(?:\s+[^,'"\s\\]+)*)\s*)*$/;
+                const re_value = /(?!\s*$)\s*(?:'([^'\\]*(?:\\[\S\s][^'\\]*)*)'|"([^"\\]*(?:\\[\S\s][^"\\]*)*)"|([^,'"\s\\]*(?:\s+[^,'"\s\\]+)*))\s*(?:,|$)/g;
+                if (!re_valid.test(text)) return null;
+                const a = [];
+                text.replace(re_value, function(m0, m1, m2, m3) {
+                    if (m1 !== undefined) a.push(m1.replace(/\\'/g, "'"));
+                    else if (m2 !== undefined) a.push(m2.replace(/\\"/g, '"'));
+                    else if (m3 !== undefined) a.push(m3);
+                    return ''; 
+                });
+                if (/,\s*$/.test(text)) a.push('');
+                return a;
+            };
+            
+            const simpleParse = (text) => {
                 let p = '', row = [''], i = 0, s = !0;
                 for (let l of text) {
                     if ('"' === l) {
@@ -569,11 +584,12 @@
                     p = l;
                 }
                 return row;
-            };
+            }
 
             for (let i = 1; i < rows.length; i++) {
                 if (!rows[i].trim()) continue;
-                const cols = parseCSVLine(rows[i]);
+                // Try simple first, then regex if needed (or stick to simple for performance if standard)
+                const cols = simpleParse(rows[i]);
                 
                 if (cols.length >= 4) {
                     const model = cols[0].replace(/^"|"$/g, '').trim();
@@ -866,8 +882,6 @@
         // --- ADMIN ---
         window.openAdminModal = () => document.getElementById('dataManagementModal').classList.remove('hidden');
         window.closeAdminModal = () => document.getElementById('dataManagementModal').classList.add('hidden');
-        window.exportCSVData = () => { /* simplified */ };
-        window.importCSVData = () => { /* simplified */ };
 
         const updateButtonState = (b, a) => { b.disabled = !a; if(a) b.classList.replace('bg-gray-200','bg-indigo-100'); else b.classList.replace('bg-indigo-100','bg-gray-200'); };
         
