@@ -600,4 +600,1362 @@
         if (typeof window.startFirebaseApp === 'function') window.startFirebaseApp();
     </script>
 </body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Repair Pricing Tool (Ultimate Rescue)</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; -webkit-tap-highlight-color: transparent; }
+        .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .price-table { min-width: 700px; } 
+        .searchable-input { padding-right: 2.5rem; }
+        .modal-backdrop { background-color: rgba(0, 0, 0, 0.6); backdrop-filter: blur(2px); z-index: 50; }
+        
+        /* Dropdown */
+        .suggestions-container {
+            position: absolute; z-index: 40; background-color: white;
+            border: 1px solid #e5e7eb; border-top: none; max-height: 300px;
+            overflow-y: auto; width: 100%;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border-radius: 0 0 0.5rem 0.5rem;
+        }
+        .suggestion-item { padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #f3f4f6; transition: all 0.1s; }
+        .suggestion-item:hover, .suggestion-item.active-suggestion { background-color: #e0e7ff; border-left: 4px solid #4f46e5; padding-left: 12px; }
+        
+        .show-all-item {
+            font-weight: bold; color: #4f46e5; text-align: center; 
+            border-top: 1px solid #e5e7eb; background-color: #f9fafb; padding: 12px; cursor: pointer;
+            position: sticky; bottom: 0; z-index: 10;
+        }
+        .show-all-item:hover { background-color: #eff6ff; }
+
+        /* Z-Index Layers */
+        .z-modal { z-index: 60; }
+        .z-modal-top { z-index: 70; }
+
+        /* Setup Screen */
+        .setup-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: white; z-index: 100; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; padding: 20px;
+        }
+        
+        /* Spinner */
+        .spinner {
+            border: 3px solid #f3f3f3; border-top: 3px solid #4f46e5;
+            border-radius: 50%; width: 24px; height: 24px;
+            animation: spin 1s linear infinite; display: inline-block;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="p-3 sm:p-6" onclick="window.handleClickOutside(event)">
+
+    <!-- SETUP SCREEN -->
+    <div id="setupScreen" class="setup-screen hidden">
+        <div class="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl border border-gray-100 text-center">
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">Connect Data Store</h2>
+            <p class="text-gray-500 text-sm mb-4">Paste your Firebase Config JSON here.</p>
+            <textarea id="firebaseConfigInput" rows="5" class="w-full p-3 border rounded-lg text-xs mb-4 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="const firebaseConfig = { ... }"></textarea>
+            <button onclick="window.saveConfiguration()" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition">Connect Cloud</button>
+            <button onclick="window.useOfflineMode()" class="mt-4 text-gray-500 text-sm underline hover:text-indigo-600">Use Offline Mode</button>
+        </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div id="mainApp" class="max-w-6xl mx-auto bg-white shadow-xl rounded-2xl p-4 sm:p-8 min-h-[80vh]">
+        <!-- Header -->
+        <div class="flex justify-between items-start mb-6 border-b pb-4">
+            <div>
+                <h1 class="text-xl sm:text-3xl font-bold text-gray-800">Repair Pricing Tool</h1>
+                <p class="text-xs text-gray-400">Professional System (Rescue Edition)</p>
+            </div>
+            <div class="flex flex-col items-end">
+                <button onclick="window.resetConfig()" class="text-[10px] text-red-500 mb-1 hover:underline">Settings / Reset</button>
+                <span id="syncStatus" class="text-xs bg-gray-100 px-2 py-1 rounded-full">Checking...</span>
+                <span id="dataMode" class="text-[10px] text-gray-400 mt-1">Loading...</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <!-- Model -->
+            <div class="relative" id="modelSearchContainer">
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">1. Select Model</label>
+                <div class="flex items-center shadow-sm rounded-xl border border-gray-200 bg-white">
+                    <input id="modelInput" type="text" placeholder="e.g. iPhone 14 Pro Max..." class="w-full p-3 rounded-l-xl outline-none font-medium text-gray-700" oninput="window.updateSuggestions(this.value, 'model')" autocomplete="off">
+                    <button id="renameModelButton" onclick="window.openActionModal('model', 'rename')" class="p-3 text-gray-400 hover:text-indigo-600 border-l transition" disabled title="Rename Model">✎</button>
+                    <button id="addModelButton" onclick="window.openActionModal('model', 'add')" class="p-3 bg-indigo-600 text-white rounded-r-xl hover:bg-indigo-700 transition" title="Add Model">+</button>
+                </div>
+                <div id="modelSuggestions" class="suggestions-container hidden"></div>
+            </div>
+
+            <!-- Service -->
+            <div class="relative" id="serviceSearchContainer">
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">2. Select Service</label>
+                <div class="flex items-center shadow-sm rounded-xl bg-gray-100 border border-gray-200">
+                    <input id="serviceInput" type="text" placeholder="e.g. Screen..." disabled class="w-full p-3 bg-transparent outline-none font-medium text-gray-700" oninput="window.updateSuggestions(this.value, 'service')" autocomplete="off">
+                    <button id="renameServiceButton" onclick="window.openActionModal('service', 'rename')" class="p-3 text-gray-400 hover:text-indigo-600 border-l transition" disabled title="Rename Service">✎</button>
+                    <button id="addServiceButton" onclick="window.openActionModal('service', 'add')" class="p-3 bg-gray-400 text-white rounded-r-xl transition" disabled title="Add Service">+</button>
+                </div>
+                <div id="serviceSuggestions" class="suggestions-container hidden"></div>
+            </div>
+        </div>
+
+        <!-- Result Table -->
+        <div id="resultDisplay" class="bg-white border rounded-xl shadow-sm min-h-[200px]">
+            <div class="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
+                <h3 id="tableTitle" class="font-bold text-gray-700">Price List</h3>
+                <button onclick="window.addQualityLevelRow()" id="addRowBtn" class="hidden text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-bold hover:bg-green-200 transition">+ Add Grade</button>
+            </div>
+            <div id="quoteStatus" class="p-8 text-center text-gray-400 italic">Please select a Model and a Service.</div>
+            <div id="priceComparisonTable" class="table-container hidden"></div>
+        </div>
+
+        <div class="mt-8 text-center">
+            <button onclick="window.openAdminModal()" class="text-indigo-600 text-sm underline hover:text-indigo-800">Data Management</button>
+        </div>
+    </div>
+
+    <!-- MODALS -->
+    <!-- Quick Add/Rename -->
+    <div id="quickAddModal" class="fixed inset-0 z-modal hidden flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 transform transition-all scale-100" id="quickAddModalContent">
+            <h4 id="addModalTitle" class="text-xl font-bold mb-4 text-gray-800">Add New</h4>
+            <input id="addModalInput" type="text" placeholder="Enter name..." class="p-3 border rounded-lg w-full mb-4 focus:ring-2 focus:ring-indigo-500 outline-none">
+            <div class="flex justify-end gap-2">
+                <button onclick="window.closeModal('quickAddModal')" class="px-4 py-2 bg-gray-100 rounded-lg text-gray-600 font-medium hover:bg-gray-200">Cancel</button>
+                <button onclick="window.handleAction()" id="confirmActionButton" class="px-4 py-2 bg-indigo-600 rounded-lg text-white font-medium hover:bg-indigo-700">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Row -->
+    <div id="editRowModal" class="fixed inset-0 z-modal hidden flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 overflow-y-auto max-h-[90vh]" id="editRowModalContent">
+            <h4 class="text-xl font-bold mb-4 text-gray-800">Edit Price Detail</h4>
+            <div class="space-y-3">
+                <input id="editGradeInput" type="text" class="w-full p-2 border rounded font-bold" placeholder="Grade Name">
+                <div class="flex gap-2">
+                    <input id="editPriceInput" type="text" class="w-1/2 p-2 border rounded font-bold text-red-600 text-lg" placeholder="Price">
+                    <div class="flex w-1/2 gap-1">
+                        <input id="editWarrantyNum" type="number" class="w-1/3 p-2 border rounded text-center font-bold">
+                        <select id="editWarrantyUnit" class="w-2/3 p-2 border rounded text-sm" onchange="window.toggleWarrantyInput()">
+                            <option value="Months">Months</option><option value="Days">Days</option><option value="Years">Years</option><option value="Lifetime">Lifetime</option>
+                        </select>
+                    </div>
+                </div>
+                <textarea id="editNotesInput" rows="2" class="w-full p-2 border rounded" placeholder="Notes"></textarea>
+            </div>
+            <div class="flex justify-end mt-4 gap-2">
+                <button onclick="window.closeModal('editRowModal')" class="px-4 py-2 bg-gray-100 rounded-lg">Cancel</button>
+                <button onclick="window.saveRowEdit()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirm -->
+    <div id="deleteConfirmModal" class="fixed inset-0 z-modal-top hidden flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-xs text-center shadow-2xl">
+            <h4 class="font-bold text-lg mb-2 text-gray-800" id="deleteTitle">Delete?</h4>
+            <p id="deleteItemName" class="text-sm text-gray-500 mb-4"></p>
+            <div class="flex gap-2">
+                <button onclick="window.closeModal('deleteConfirmModal')" class="flex-1 py-2 bg-gray-100 rounded-lg">No</button>
+                <button onclick="window.executeDeleteAction()" class="flex-1 py-2 bg-red-600 text-white rounded-lg shadow">Yes, Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- All Services Modal -->
+    <div id="allServicesModal" class="fixed inset-0 z-modal hidden flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl p-6 h-[80vh] flex flex-col">
+            <div class="flex justify-between mb-4 border-b pb-2">
+                <h4 id="allServicesTitle" class="text-xl font-bold">Select Service</h4>
+                <button onclick="window.closeModal('allServicesModal')" class="text-gray-500 text-2xl">&times;</button>
+            </div>
+            <div id="allServicesGrid" class="grid grid-cols-2 md:grid-cols-3 gap-3 overflow-y-auto p-2"></div>
+        </div>
+    </div>
+
+    <!-- Service Manager Modal -->
+    <div id="serviceManagerModal" class="fixed inset-0 z-modal hidden flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl p-6 h-[80vh] flex flex-col">
+            <div class="flex justify-between mb-4 border-b pb-2">
+                <h4 class="text-xl font-bold">Manage Services</h4>
+                <button onclick="window.closeModal('serviceManagerModal')" class="text-gray-500 text-2xl">&times;</button>
+            </div>
+            <input type="text" id="managerSearchInput" oninput="window.renderServiceList(this.value)" placeholder="Search..." class="w-full p-2 border rounded mb-2">
+            <div id="serviceManagerList" class="overflow-y-auto flex-1 space-y-2 p-1"></div>
+        </div>
+    </div>
+
+    <!-- Admin/Import Modal -->
+    <div id="dataManagementModal" class="fixed inset-0 z-modal hidden flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-white rounded-xl w-full max-w-lg p-6 shadow-2xl">
+            <h4 class="font-bold text-xl mb-4 text-gray-800">Data Management</h4>
+            
+            <button onclick="window.manualRecovery()" class="w-full py-3 bg-yellow-100 text-yellow-700 font-bold rounded mb-4 border border-yellow-200">SCAN & RECOVER OLD DATA</button>
+
+            <button onclick="window.openServiceManagerModal()" class="w-full py-3 bg-blue-50 text-blue-600 font-bold rounded mb-4 border border-blue-100">Manage Services</button>
+            <textarea id="importTextarea" rows="4" class="w-full p-2 border rounded text-xs mb-2 font-mono" placeholder="CSV Data..."></textarea>
+            <div class="flex gap-2 mb-4">
+                <button onclick="window.exportCSVData()" class="flex-1 py-2 bg-green-600 text-white rounded">Export CSV</button>
+                <button onclick="window.importCSVData()" class="flex-1 py-2 bg-indigo-600 text-white rounded">Import CSV</button>
+            </div>
+            <button onclick="window.resetToDefaultData()" class="w-full py-2 text-red-500 text-sm border border-red-200 rounded">Reset Data to Default</button>
+            <button onclick="window.closeModal('dataManagementModal')" class="mt-4 w-full py-2 text-gray-500">Close</button>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full text-sm transition-opacity opacity-0 pointer-events-none z-[9999] font-medium shadow-lg">Notification</div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        window.fbModules = { initializeApp, getAuth, signInAnonymously, getFirestore, doc, setDoc, onSnapshot };
+        setTimeout(() => {
+             if (localStorage.getItem('my_firebase_config')) window.initAppWithConfig();
+             else document.getElementById('setupScreen').classList.remove('hidden');
+        }, 100);
+    </script>
+
+    <script>
+        // --- CONSTANTS ---
+        const COLLECTION_PATH = 'store_data';
+        const DOC_ID = 'pricing_master';
+        // THIS KEY WILL NOT CHANGE ANYMORE
+        const STABLE_STORAGE_KEY = 'repair_data_final_stable'; 
+
+        // --- GLOBAL VARIABLES ---
+        let priceStructure = {}, allModels = [], allServices = [];
+        let currentModel = '', currentEditingQuality = '', itemToDelete = '', deleteMode = '', currentActionType = {};
+        let db = null, auth = null, isOnline = false, activeSuggestionIndex = -1;
+
+        // --- RECOVERY LOGIC (SCAN ALL OLD KEYS) ---
+        window.manualRecovery = function() {
+            const legacyKeys = [
+                'repair_data_final_stable', 'local_pricing_data_v27', 'local_pricing_data_v25', 
+                'local_pricing_data_v22', 'local_pricing_data_v21', 'local_pricing_data_v20', 
+                'local_pricing_data_v16', 'local_pricing_data_v15', 'local_pricing_data_v11',
+                'local_pricing_data_v8', 'local_pricing_data_v7', 'local_pricing_data_v6', 
+                'local_pricing_data_v5', 'priceStructureData_EN_V2'
+            ];
+            
+            let foundData = null;
+            let maxItems = 0;
+
+            for (const key of legacyKeys) {
+                const raw = localStorage.getItem(key);
+                if (raw) {
+                    try {
+                        const parsed = JSON.parse(raw);
+                        // Check if this data has custom entries (more than default)
+                        // A simple check is counting models
+                        const count = Object.keys(parsed).length;
+                        if (count > 5) { // Assuming default has some, but real data has user entries
+                             // We prefer the one with the MOST data
+                             if (count > maxItems) {
+                                 maxItems = count;
+                                 foundData = parsed;
+                             }
+                        }
+                    } catch(e) {}
+                }
+            }
+
+            if (foundData) {
+                if(confirm(`Found old data with ${maxItems} models. Restore? (This will overwrite current)`)) {
+                    priceStructure = mergeWithDefaults(foundData);
+                    saveData(priceStructure);
+                    refreshDataLists();
+                    showToast("Recovered successfully!");
+                    window.closeModal('dataManagementModal');
+                }
+            } else {
+                alert("No old data found in this browser.");
+            }
+        }
+
+        function generateDefaultData() {
+            let data = {};
+            const iphones=["iPhone 6","iPhone 6 Plus","iPhone 6s","iPhone 6s Plus","iPhone 7","iPhone 7 Plus","iPhone 8","iPhone 8 Plus","iPhone X","iPhone XR","iPhone XS","iPhone XS Max","iPhone 11","iPhone 11 Pro","iPhone 11 Pro Max","iPhone 12","iPhone 12 Mini","iPhone 12 Pro","iPhone 12 Pro Max","iPhone 13","iPhone 13 Mini","iPhone 13 Pro","iPhone 13 Pro Max","iPhone 14","iPhone 14 Plus","iPhone 14 Pro","iPhone 14 Pro Max","iPhone 15","iPhone 15 Plus","iPhone 15 Pro","iPhone 15 Pro Max","iPhone 16","iPhone 16 Plus","iPhone 16 Pro","iPhone 16 Pro Max","iPhone 17","iPhone 17 Plus","iPhone 17 Pro","iPhone 17 Pro Max"];
+            const samsungS=["Samsung S8","Samsung S8+","Samsung S9","Samsung S9+","Samsung S10","Samsung S10+","Samsung S10e","Samsung S20","Samsung S20+","Samsung S20 Ultra","Samsung S20 FE","Samsung S21","Samsung S21+","Samsung S21 Ultra","Samsung S21 FE","Samsung S22","Samsung S22+","Samsung S22 Ultra","Samsung S23","Samsung S23+","Samsung S23 Ultra","Samsung S23 FE","Samsung S24","Samsung S24+","Samsung S24 Ultra","Samsung S25","Samsung S25+","Samsung S25 Ultra"];
+            const samsungNote=["Samsung Note 8","Samsung Note 9","Samsung Note 10","Samsung Note 10+","Samsung Note 10 Lite","Samsung Note 20","Samsung Note 20 Ultra"];
+            const samsungA=["Samsung A05","Samsung A05s","Samsung A15","Samsung A25","Samsung A35","Samsung A55","Samsung A04","Samsung A04s","Samsung A14","Samsung A24","Samsung A34","Samsung A54","Samsung A03","Samsung A13","Samsung A23","Samsung A33","Samsung A53","Samsung A73","Samsung A12","Samsung A22","Samsung A32","Samsung A52","Samsung A52s","Samsung A72"];
+            const oppo=["OPPO Find N3","OPPO Find N3 Flip","OPPO Find N2 Flip","OPPO Reno11 F","OPPO Reno11","OPPO Reno11 Pro","OPPO Reno10","OPPO Reno10 Pro","OPPO Reno10 Pro+","OPPO Reno8 T","OPPO Reno8 Z","OPPO Reno8","OPPO A79","OPPO A58","OPPO A38","OPPO A18","OPPO A98","OPPO A78","OPPO A77s","OPPO A57","OPPO A17","OPPO A17k"];
+            const vivo=["Vivo X100","Vivo X100 Pro","Vivo X90","Vivo X80","Vivo V30","Vivo V30e","Vivo V29","Vivo V29e","Vivo V27","Vivo V27e","Vivo Y100","Vivo Y36","Vivo Y27","Vivo Y17s","Vivo Y03","Vivo Y02t"];
+            const xiaomi=["Xiaomi 14","Xiaomi 14 Ultra","Xiaomi 13","Xiaomi 13T","Xiaomi 13T Pro","Xiaomi 12","Xiaomi 12T","Redmi Note 13","Redmi Note 13 Pro","Redmi Note 13 Pro+","Redmi Note 12","Redmi Note 12 Pro","Redmi Note 12s","Redmi 13C","Redmi 12","Redmi A3"];
+            const realme=["Realme GT5 Pro","Realme 11 Pro","Realme 11 Pro+","Realme 11","Realme C67","Realme C65","Realme C55","Realme C53","Realme C51","Realme Note 50"];
+            const others=["Huawei P60 Pro","Huawei Mate 60","Huawei P50","Honor X9b","Honor 90","Honor X8b","Honor X7b","Infinix Note 40 Pro","Infinix Note 30","Infinix Hot 40","Infinix Hot 30","Infinix Smart 8","Tecno Camon 30","Tecno Pova 6","Tecno Spark 20","Tecno Spark 20 Pro","Tecno Spark 10"];
+            const services=["Back Glass (Kính lưng) ຝາຫລັງ","Battery (Pin) ແບັດເຕີລີ","Memory upgrade(Nâng cấp bộ nhớ) ເພີ່ມຄວາມຈຳ","Charging Port (Chân sạc)ກົນສາກ","Face ID ສະແກນໜ້າ","Front Camera ( Camera trước) ກ້ອງໜ້າ","Glass Screen (Kính màn hình) ລອກແກ້ວຈໍ","Power Flex (Cáp nguồn) ສາຍເປີດ-ປິດ","Rear Camera (Camera sau) ກ້ອງຫລັງ","Screen (Màn hình) ປ່ຽນຈໍ","Speaker (Loa) ລຳໂພງ","Volume Flex (Cáp âm lượng) ສາຍເພີ່ມສຽງ-ລົດສຽງ","Bypass + FRP ບາຍພາສ","Body (vỏ) ບໍດີ້","Microphone ໄມ","SIM tray (Khay sim) ແຜ່ນຮອງຊິມ","Button (Phím bấm) ປຸ່ມ","IC Audio ໄອຊີສຽງ","IC Power ໄອຊີພາວເວີ້","IC Charging ໄອຊີສາກ","IC Wifi ໄອຊີໄວຟາຍ","Camera Glass (Mặt kính camera) ແກ້ວກ້ອງ","Mainboard (Bo mạch) ເມນບອດ","Display Cable (Cáp màn hình) ສາຍແພຈໍ","Motherboard flex cable (Cáp nối bo mạch)","Flashlight (Đèn pin) ໄຟສາຍ","Sensor Cable ( Cáp cảm biến) ສາຍແພເຊັນເຊີ້","Network error (Lỗi mạng) ສັນຍານອິນເຕີເນັດ","Phone cleaning service (Dịch vụ vệ sinh điện thoại) ລ້າງເຄື່ອງ","Mainboard Repair ແປງເມນບອດ"];
+            
+            const allList = [...iphones,...samsungS,...samsungNote,...samsungA,...oppo,...vivo,...xiaomi,...realme,...others];
+            allList.forEach(m => {
+                data[m] = {};
+                services.forEach(s => { data[m][s] = { "Standard Grade": { price: 0, warranty: "6 Months", notes: "No info yet" } }; });
+            });
+            return data;
+        }
+
+        // --- INIT ---
+        window.saveConfiguration = function() {
+            let input = document.getElementById('firebaseConfigInput').value.trim();
+            if (input.startsWith("const firebaseConfig =")) input = input.replace("const firebaseConfig =", "").trim();
+            if (input.endsWith(";")) input = input.slice(0, -1).trim();
+            try {
+                const config = new Function("return " + input)();
+                if (!config.apiKey) throw new Error();
+                localStorage.setItem('my_firebase_config', JSON.stringify(config));
+                location.reload();
+            } catch (e) { alert("Invalid Config!"); }
+        };
+
+        window.useOfflineMode = function() { 
+            localStorage.setItem('offline_mode', 'true'); 
+            document.getElementById('setupScreen').classList.add('hidden'); 
+            initOffline(); 
+        };
+
+        window.resetConfig = function() { 
+            if(confirm("Bạn có chắc chắn muốn đăng xuất?")) { 
+                localStorage.removeItem('my_firebase_config'); 
+                localStorage.removeItem('offline_mode'); 
+                location.reload(); 
+            } 
+        };
+
+        window.initAppWithConfig = async function() {
+            try {
+                const config = JSON.parse(localStorage.getItem('my_firebase_config'));
+                const { initializeApp, getAuth, signInAnonymously, getFirestore, doc, onSnapshot } = window.fbModules;
+                const app = initializeApp(config);
+                auth = getAuth(app); db = getFirestore(app);
+                document.getElementById('setupScreen').classList.add('hidden');
+                document.getElementById('mainApp').classList.remove('hidden');
+                
+                try { await signInAnonymously(auth); } catch(e) {}
+                
+                onSnapshot(doc(db, COLLECTION_PATH, DOC_ID), (docSnap) => {
+                    if (docSnap.exists()) {
+                        const cloudData = docSnap.data().data || {};
+                        // If cloud data seems empty (just defaults), try to see if we have local recovery data that is better
+                        const recovered = attemptDataRecovery();
+                        if (recovered && Object.keys(recovered).length > Object.keys(cloudData).length) {
+                             priceStructure = mergeWithDefaults(recovered);
+                             // Push recovery to cloud
+                             saveData(priceStructure);
+                        } else {
+                             priceStructure = mergeWithDefaults(cloudData);
+                        }
+                    } else {
+                        // First time: try recovery
+                        const recovered = attemptDataRecovery();
+                        priceStructure = recovered ? mergeWithDefaults(recovered) : generateDefaultData();
+                        saveData(priceStructure);
+                    }
+                    refreshDataLists();
+                    updateSyncStatus('online');
+                }, (err) => { 
+                    alert("Lỗi kết nối Cloud: " + err.code); 
+                    updateSyncStatus('error'); 
+                    initOffline(); 
+                });
+                isOnline = true;
+            } catch (e) { alert("Lỗi khởi tạo: " + e.message); initOffline(); }
+            setupEventListeners();
+        };
+
+        function initOffline() {
+            // Try stable key first
+            let local = localStorage.getItem(STABLE_STORAGE_KEY);
+            let data = local ? JSON.parse(local) : attemptDataRecovery();
+            
+            if (!data) { data = generateDefaultData(); saveData(data); }
+            else data = mergeWithDefaults(data);
+            
+            priceStructure = data;
+            refreshDataLists();
+            updateSyncStatus('offline');
+            setupEventListeners();
+        }
+
+        function mergeWithDefaults(loaded) {
+            const def = generateDefaultData();
+            Object.keys(def).forEach(m => {
+                if (!loaded[m]) loaded[m] = def[m];
+                else {
+                    Object.keys(def[m]).forEach(s => { if (!loaded[m][s]) loaded[m][s] = def[m][s]; });
+                }
+            });
+            return loaded;
+        }
+
+        async function saveData(data) {
+            priceStructure = data;
+            // ALWAYS SAVE TO STABLE KEY
+            localStorage.setItem(STABLE_STORAGE_KEY, JSON.stringify(data));
+            if (isOnline && db) {
+                try { 
+                    const { doc, setDoc } = window.fbModules;
+                    await setDoc(doc(db, COLLECTION_PATH, DOC_ID), { data });
+                    showToast("Saved to Cloud");
+                } catch (e) { showToast("Cloud Save Failed", false); }
+            } else { showToast("Saved Offline"); }
+        }
+
+        function refreshDataLists() {
+            allModels = Object.keys(priceStructure).sort();
+            allServices = [];
+            Object.values(priceStructure).forEach(m => Object.keys(m).forEach(s => { if (!allServices.includes(s)) allServices.push(s); }));
+            allServices.sort();
+            if (currentModel && document.getElementById('serviceInput').value) displayPriceTable();
+        }
+
+        // --- UI FUNCTIONS ---
+        window.updateSuggestions = function(val, type) {
+            activeSuggestionIndex = -1;
+            const container = document.getElementById(type + 'Suggestions');
+            const source = type === 'model' ? allModels : (currentModel ? Object.keys(priceStructure[currentModel]||{}) : []);
+            const matches = source.filter(i => i.toLowerCase().includes(val.toLowerCase()));
+            let html = '';
+            const limit = type === 'service' ? 10 : 50;
+            matches.slice(0, limit).forEach(i => {
+                html += `<div class="suggestion-item text-sm" onmousedown="window.selectItem('${i}', '${type}')">${i}</div>`;
+            });
+            if (type === 'service' && matches.length > 10) {
+                html += `<div class="show-all-item text-sm" onmousedown="window.handleShowAllClick(event)">Show All (${matches.length})</div>`;
+            }
+            container.innerHTML = html;
+            container.classList.remove('hidden');
+            
+            const exact = source.includes(val);
+            const btnAdd = document.getElementById('add' + (type==='model'?'Model':'Service') + 'Button');
+            const btnRename = document.getElementById('rename' + (type==='model'?'Model':'Service') + 'Button');
+            if(btnAdd) { 
+                btnAdd.disabled = !(!exact && val.trim()); 
+                btnAdd.className = (!exact && val.trim()) ? 'p-3 bg-indigo-600 text-white rounded-r-xl hover:bg-indigo-700' : 'p-3 bg-gray-400 text-white rounded-r-xl'; 
+            }
+            if(btnRename) { 
+                btnRename.disabled = !exact; 
+                btnRename.className = exact ? 'p-3 text-indigo-600 border-l hover:text-indigo-800' : 'p-3 text-gray-400 border-l'; 
+            }
+        };
+
+        window.selectItem = function(val, type) {
+            document.getElementById(type + 'Input').value = val;
+            document.getElementById(type + 'Suggestions').classList.add('hidden');
+            if (type === 'model') {
+                currentModel = val;
+                const sInput = document.getElementById('serviceInput');
+                sInput.disabled = false; sInput.classList.remove('bg-gray-100'); sInput.value = ''; sInput.focus();
+                window.updateSuggestions('', 'service');
+                toggleTable(false);
+            } else {
+                displayPriceTable();
+            }
+        };
+
+        window.handleShowAllClick = function(e) { e.preventDefault(); e.stopPropagation(); window.showAllServices(); };
+
+        function toggleTable(show) {
+            document.getElementById('resultDisplay').classList.toggle('hidden', !show);
+            document.getElementById('quoteStatus').classList.toggle('hidden', show);
+            document.getElementById('priceComparisonTable').classList.toggle('hidden', !show);
+            document.getElementById('addRowBtn').classList.toggle('hidden', !show);
+        }
+
+        function displayPriceTable() {
+            const svc = document.getElementById('serviceInput').value;
+            if (!currentModel || !priceStructure[currentModel] || !priceStructure[currentModel][svc]) return toggleTable(false);
+            const data = priceStructure[currentModel][svc];
+            let html = `<table class="price-table w-full text-sm text-left text-gray-600"><thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b"><tr><th class="px-4 py-3 w-1/4">Component Grade</th><th class="px-4 py-3 w-1/3">Notes</th><th class="px-4 py-3 text-right">Price (LAK)</th><th class="px-4 py-3 text-center">Warranty</th><th class="px-4 py-3 text-center">Actions</th></tr></thead><tbody>`;
+            Object.keys(data).forEach(k => {
+                const d = data[k];
+                html += `<tr class="border-b hover:bg-indigo-50"><td class="px-4 py-3 font-bold">${k}</td><td class="px-4 py-3 text-xs">${d.notes}</td><td class="px-4 py-3 text-right font-bold text-red-600">${formatMoney(d.price)}</td><td class="px-4 py-3 text-center text-xs bg-green-50 text-green-700 rounded">${d.warranty}</td><td class="px-4 py-3 text-center"><button onclick="window.openEditModal('${k.replace(/'/g, "\\'")}')" class="text-indigo-600 p-2 text-lg">✎</button><button onclick="window.openDeleteConfirmModal('${k.replace(/'/g, "\\'")}')" class="text-red-500 p-2 text-lg">🗑</button></td></tr>`;
+            });
+            document.getElementById('priceComparisonTable').innerHTML = html + '</tbody></table>';
+            document.getElementById('tableTitle').innerText = `${currentModel} - ${svc}`;
+            toggleTable(true);
+        }
+
+        window.openEditModal = function(key) {
+            currentEditingQuality = key;
+            const d = priceStructure[currentModel][document.getElementById('serviceInput').value][key];
+            document.getElementById('editGradeInput').value = key;
+            document.getElementById('editPriceInput').value = d.price.toLocaleString('en-US');
+            document.getElementById('editNotesInput').value = d.notes;
+            const wParts = d.warranty.split(' ');
+            if (d.warranty.includes('Trọn đời') || d.warranty.includes('Lifetime')) {
+                document.getElementById('editWarrantyUnit').value = 'Lifetime';
+                document.getElementById('editWarrantyNum').style.display = 'none';
+            } else {
+                document.getElementById('editWarrantyNum').value = parseInt(wParts[0])||1;
+                document.getElementById('editWarrantyUnit').value = wParts[1]||'Months';
+                document.getElementById('editWarrantyNum').style.display = 'block';
+            }
+            document.getElementById('editRowModal').classList.remove('hidden');
+        };
+
+        window.closeEditModal = function() { document.getElementById('editRowModal').classList.add('hidden'); };
+        window.saveRowEdit = function() {
+            const name = document.getElementById('editGradeInput').value.trim();
+            const price = parseInt(document.getElementById('editPriceInput').value.replace(/,/g,'')) || 0;
+            const notes = document.getElementById('editNotesInput').value.trim();
+            const unit = document.getElementById('editWarrantyUnit').value;
+            const num = document.getElementById('editWarrantyNum').value;
+            const w = (unit === 'Trọn đời' || unit === 'Lifetime') ? 'Lifetime Warranty' : `${num} ${unit}`;
+            const svc = document.getElementById('serviceInput').value;
+            
+            let temp = JSON.parse(JSON.stringify(priceStructure));
+            if (name !== currentEditingQuality) delete temp[currentModel][svc][currentEditingQuality];
+            temp[currentModel][svc][name] = { price, warranty: w, notes };
+            saveData(temp);
+            window.closeModal('editRowModal');
+            displayPriceTable();
+        };
+
+        window.openActionModal = function(t, a) {
+            currentActionType = { type:t, action:a };
+            document.getElementById('addModalTitle').innerText = t==='model'?"Add/Edit Model":"Add/Edit Service";
+            const val = document.getElementById(t + 'Input').value;
+            document.getElementById('addModalInput').value = (a === 'rename') ? val : '';
+            document.getElementById('quickAddModal').classList.remove('hidden');
+            setTimeout(() => document.getElementById('addModalInput').focus(), 50);
+        };
+        window.closeActionModal = function() { document.getElementById('quickAddModal').classList.add('hidden'); };
+        window.handleAction = function() {
+            const val = document.getElementById('addModalInput').value.trim();
+            if(!val) return alert("Name required");
+            let temp = JSON.parse(JSON.stringify(priceStructure));
+            const { type, action } = currentActionType;
+            if(action === 'add') {
+                if(type === 'model') {
+                    if(temp[val]) return alert("Exists");
+                    const def = generateDefaultData();
+                    const sample = def[Object.keys(def)[0]];
+                    const allSvcs = new Set([...Object.keys(sample), ...allServices]);
+                    temp[val] = {};
+                    allSvcs.forEach(s => temp[val][s] = { "Standard Grade": { price: 0, warranty: "6 Months", notes: "" } });
+                } else {
+                    if(temp[currentModel][val]) return alert("Exists");
+                    Object.keys(temp).forEach(m => { if(!temp[m][val]) temp[m][val] = { "Standard Grade": { price: 0, warranty: "6 Months", notes: "" } }; });
+                }
+            } else {
+                if (type === 'model') {
+                    temp[val] = temp[currentModel]; delete temp[currentModel];
+                    document.getElementById('modelInput').value = val; window.selectItem(val, 'model');
+                } else {
+                    const old = document.getElementById('serviceInput').value;
+                    Object.keys(temp).forEach(m => {
+                        if(temp[m][old]) {
+                            temp[m][val] = temp[m][old];
+                            delete temp[m][old];
+                        }
+                    });
+                    document.getElementById('serviceInput').value = val; window.selectItem(val, 'service');
+                }
+            }
+            saveData(temp);
+            window.closeModal('quickAddModal');
+        };
+
+        window.addQualityLevelRow = function() {
+             const svc = document.getElementById('serviceInput').value;
+             let temp = JSON.parse(JSON.stringify(priceStructure));
+             let newName = "Linh kiện mới"; let count = 1;
+             while(temp[currentModel][svc][newName]) newName = `Linh kiện mới ${count++}`;
+             temp[currentModel][svc][newName] = { price: 0, warranty: "3 Months", notes: "" };
+             saveData(temp);
+             displayPriceTable();
+             setTimeout(() => window.openEditModal(newName), 100);
+        };
+
+        // --- SERVICE MANAGER ---
+        window.openServiceManagerModal = function() {
+            window.closeAdminModal(); 
+            document.getElementById('managerSearchInput').value = '';
+            window.renderServiceList(''); 
+            document.getElementById('serviceManagerModal').classList.remove('hidden');
+        };
+        window.renderServiceList = function(filter) {
+            const list = document.getElementById('serviceManagerList');
+            list.innerHTML = '';
+            allServices.filter(s => s.toLowerCase().includes(filter.toLowerCase())).forEach(s => {
+                list.innerHTML += `<div class="flex justify-between p-3 bg-gray-50 rounded border mb-2"><span class="text-sm">${s}</span><button class="text-red-500 bg-white p-2 rounded border hover:bg-red-50" onclick="window.confirmDeleteGlobal('${s.replace(/'/g,"\\'")}')">🗑</button></div>`;
+            });
+        };
+        window.confirmDeleteGlobal = function(s) {
+             itemToDelete = s; deleteMode = 'GLOBAL';
+             document.getElementById('deleteTitle').innerText = "Delete Everywhere?";
+             document.getElementById('deleteItemName').innerText = s;
+             document.getElementById('deleteConfirmModal').classList.remove('hidden');
+        };
+        window.executeDeleteAction = function() {
+             let temp = JSON.parse(JSON.stringify(priceStructure));
+             if (deleteMode === 'GLOBAL') {
+                 Object.keys(temp).forEach(m => { if(temp[m][itemToDelete]) delete temp[m][itemToDelete]; });
+                 saveData(temp);
+                 refreshDataLists();
+                 window.renderServiceList(document.getElementById('managerSearchInput').value);
+             } else {
+                const svc = document.getElementById('serviceInput').value;
+                delete temp[currentModel][svc][itemToDelete];
+                saveData(temp);
+                displayPriceTable();
+            }
+            window.closeDeleteConfirmModal();
+        };
+
+        // --- UTILS ---
+        function updateSyncStatus(status) {
+            const el = document.getElementById('syncStatus');
+            const txt = document.getElementById('dataMode');
+            if(!el || !txt) return; 
+
+            if (status === 'online') { 
+                el.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse"></span> Online'; 
+                txt.innerText="Synced"; 
+                txt.className = "text-[10px] text-green-600 mt-1 font-medium";
+            } else if (status === 'error') { 
+                el.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500 mr-2"></span> Error'; 
+                txt.className = "text-[10px] text-red-500 mt-1";
+            } else { 
+                el.innerHTML = '<span class="w-2 h-2 rounded-full bg-gray-400 mr-2"></span> Offline'; 
+                txt.innerText="Local Data"; 
+                txt.className = "text-[10px] text-gray-500 mt-1";
+            }
+        }
+        
+        function showToast(msg) {
+            const t = document.getElementById('toast'); t.innerText = msg; t.style.opacity='1'; t.style.transform='translate(-50%,0)';
+            setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translate(-50%,20px)'; }, 2000);
+        }
+        function formatMoney(n) { return (n||0).toLocaleString('en-US') + ' LAK'; }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+        function openAdminModal() { document.getElementById('dataManagementModal').classList.remove('hidden'); }
+        function closeAdminModal() { document.getElementById('dataManagementModal').classList.add('hidden'); }
+        function closeServiceManagerModal() { document.getElementById('serviceManagerModal').classList.add('hidden'); }
+        function closeAllServicesModal() { document.getElementById('allServicesModal').classList.add('hidden'); }
+        function resetToDefaultData() { if(confirm("Reset?")) { saveData(generateDefaultData()); refreshDataLists(); window.closeAdminModal(); } }
+        function openDeleteConfirmModal(k) { itemToDelete = k; deleteMode = 'ROW'; document.getElementById('deleteTitle').innerText = "Delete Row?"; document.getElementById('deleteItemName').innerText = k; document.getElementById('deleteConfirmModal').classList.remove('hidden'); }
+        function closeDeleteConfirmModal() { document.getElementById('deleteConfirmModal').classList.add('hidden'); }
+        function toggleWarrantyInput() { const u = document.getElementById('editWarrantyUnit').value; document.getElementById('editWarrantyNum').style.display = (u==='Trọn đời'||u==='Lifetime')?'none':'block'; }
+        function exportCSVData() {}; function importCSVData() {};
+        
+        window.handleClickOutside = function(e) {
+            if (!e.target.closest('#modelSearchContainer')) document.getElementById('modelSuggestions').classList.add('hidden');
+            if (!e.target.closest('#serviceSearchContainer')) document.getElementById('serviceSuggestions').classList.add('hidden');
+        };
+
+        // --- KEYBOARD & EVENTS ---
+        function setupEventListeners() {
+            const sInput = document.getElementById('serviceInput');
+            const mInput = document.getElementById('modelInput');
+            const priceInput = document.getElementById('editPriceInput');
+
+            function handleKeyNavigation(e, type) {
+                 const container = document.getElementById(type + 'Suggestions');
+                 const items = container.querySelectorAll('.suggestion-item, .show-all-item');
+                 if (container.classList.contains('hidden') || !items.length) return;
+                 if (e.key === 'ArrowDown') { e.preventDefault(); activeSuggestionIndex = (activeSuggestionIndex + 1) % items.length; updateHighlight(items); }
+                 else if (e.key === 'ArrowUp') { e.preventDefault(); activeSuggestionIndex = (activeSuggestionIndex - 1 + items.length) % items.length; updateHighlight(items); }
+                 else if (e.key === 'Enter') { e.preventDefault(); if(activeSuggestionIndex > -1) items[activeSuggestionIndex].onmousedown(e); }
+                 else if (e.key === 'Escape') { container.classList.add('hidden'); activeSuggestionIndex = -1; }
+            }
+            function updateHighlight(items) { items.forEach((it, i) => { if(i===activeSuggestionIndex) { it.classList.add('active-suggestion'); it.scrollIntoView({block:'nearest'}); } else it.classList.remove('active-suggestion'); }); }
+            window.handleKeyNavigation = handleKeyNavigation;
+
+            mInput.addEventListener('keydown', (e) => handleKeyNavigation(e, 'model'));
+            sInput.addEventListener('keydown', (e) => handleKeyNavigation(e, 'service'));
+            sInput.addEventListener('focus', () => window.updateSuggestions(sInput.value, 'service'));
+            sInput.addEventListener('mouseenter', () => { if(!sInput.disabled) window.updateSuggestions(sInput.value, 'service'); });
+            priceInput.addEventListener('keyup', function() { let v = this.value.replace(/,/g,'').replace(/\D/g,''); if(v) this.value = parseInt(v).toLocaleString('en-US'); });
+        }
+
+        if (typeof window.startFirebaseApp === 'function') window.startFirebaseApp();
+    </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Repair Pricing Tool (Ultimate Rescue)</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; -webkit-tap-highlight-color: transparent; }
+        .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .price-table { min-width: 700px; } 
+        .searchable-input { padding-right: 2.5rem; }
+        .modal-backdrop { background-color: rgba(0, 0, 0, 0.6); backdrop-filter: blur(2px); z-index: 50; }
+        
+        /* Dropdown */
+        .suggestions-container {
+            position: absolute; z-index: 40; background-color: white;
+            border: 1px solid #e5e7eb; border-top: none; max-height: 300px;
+            overflow-y: auto; width: 100%;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border-radius: 0 0 0.5rem 0.5rem;
+        }
+        .suggestion-item { padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #f3f4f6; transition: all 0.1s; }
+        .suggestion-item:hover, .suggestion-item.active-suggestion { background-color: #e0e7ff; border-left: 4px solid #4f46e5; padding-left: 12px; }
+        
+        .show-all-item {
+            font-weight: bold; color: #4f46e5; text-align: center; 
+            border-top: 1px solid #e5e7eb; background-color: #f9fafb; padding: 12px; cursor: pointer;
+            position: sticky; bottom: 0; z-index: 10;
+        }
+        .show-all-item:hover { background-color: #eff6ff; }
+
+        /* Z-Index Layers */
+        .z-modal { z-index: 60; }
+        .z-modal-top { z-index: 70; }
+
+        /* Setup Screen */
+        .setup-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: white; z-index: 100; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; padding: 20px;
+        }
+        
+        /* Spinner */
+        .spinner {
+            border: 3px solid #f3f3f3; border-top: 3px solid #4f46e5;
+            border-radius: 50%; width: 24px; height: 24px;
+            animation: spin 1s linear infinite; display: inline-block;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="p-3 sm:p-6" onclick="window.handleClickOutside(event)">
+
+    <!-- SETUP SCREEN -->
+    <div id="setupScreen" class="setup-screen hidden">
+        <div class="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl border border-gray-100 text-center">
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">Connect Data Store</h2>
+            <p class="text-gray-500 text-sm mb-4">Paste your Firebase Config JSON here.</p>
+            <textarea id="firebaseConfigInput" rows="5" class="w-full p-3 border rounded-lg text-xs mb-4 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="const firebaseConfig = { ... }"></textarea>
+            <button onclick="window.saveConfiguration()" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition">Connect Cloud</button>
+            <button onclick="window.useOfflineMode()" class="mt-4 text-gray-500 text-sm underline hover:text-indigo-600">Use Offline Mode</button>
+        </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div id="mainApp" class="max-w-6xl mx-auto bg-white shadow-xl rounded-2xl p-4 sm:p-8 min-h-[80vh]">
+        <!-- Header -->
+        <div class="flex justify-between items-start mb-6 border-b pb-4">
+            <div>
+                <h1 class="text-xl sm:text-3xl font-bold text-gray-800">Repair Pricing Tool</h1>
+                <p class="text-xs text-gray-400">Professional System (Rescue Edition)</p>
+            </div>
+            <div class="flex flex-col items-end">
+                <button onclick="window.resetConfig()" class="text-[10px] text-red-500 mb-1 hover:underline">Settings / Reset</button>
+                <span id="syncStatus" class="text-xs bg-gray-100 px-2 py-1 rounded-full">Checking...</span>
+                <span id="dataMode" class="text-[10px] text-gray-400 mt-1">Loading...</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <!-- Model -->
+            <div class="relative" id="modelSearchContainer">
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">1. Select Model</label>
+                <div class="flex items-center shadow-sm rounded-xl border border-gray-200 bg-white">
+                    <input id="modelInput" type="text" placeholder="e.g. iPhone 14 Pro Max..." class="w-full p-3 rounded-l-xl outline-none font-medium text-gray-700" oninput="window.updateSuggestions(this.value, 'model')" autocomplete="off">
+                    <button id="renameModelButton" onclick="window.openActionModal('model', 'rename')" class="p-3 text-gray-400 hover:text-indigo-600 border-l transition" disabled title="Rename Model">✎</button>
+                    <button id="addModelButton" onclick="window.openActionModal('model', 'add')" class="p-3 bg-indigo-600 text-white rounded-r-xl hover:bg-indigo-700 transition" title="Add Model">+</button>
+                </div>
+                <div id="modelSuggestions" class="suggestions-container hidden"></div>
+            </div>
+
+            <!-- Service -->
+            <div class="relative" id="serviceSearchContainer">
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">2. Select Service</label>
+                <div class="flex items-center shadow-sm rounded-xl bg-gray-100 border border-gray-200">
+                    <input id="serviceInput" type="text" placeholder="e.g. Screen..." disabled class="w-full p-3 bg-transparent outline-none font-medium text-gray-700" oninput="window.updateSuggestions(this.value, 'service')" autocomplete="off">
+                    <button id="renameServiceButton" onclick="window.openActionModal('service', 'rename')" class="p-3 text-gray-400 hover:text-indigo-600 border-l transition" disabled title="Rename Service">✎</button>
+                    <button id="addServiceButton" onclick="window.openActionModal('service', 'add')" class="p-3 bg-gray-400 text-white rounded-r-xl transition" disabled title="Add Service">+</button>
+                </div>
+                <div id="serviceSuggestions" class="suggestions-container hidden"></div>
+            </div>
+        </div>
+
+        <!-- Result Table -->
+        <div id="resultDisplay" class="bg-white border rounded-xl shadow-sm min-h-[200px]">
+            <div class="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
+                <h3 id="tableTitle" class="font-bold text-gray-700">Price List</h3>
+                <button onclick="window.addQualityLevelRow()" id="addRowBtn" class="hidden text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-bold hover:bg-green-200 transition">+ Add Grade</button>
+            </div>
+            <div id="quoteStatus" class="p-8 text-center text-gray-400 italic">Please select a Model and a Service.</div>
+            <div id="priceComparisonTable" class="table-container hidden"></div>
+        </div>
+
+        <div class="mt-8 text-center">
+            <button onclick="window.openAdminModal()" class="text-indigo-600 text-sm underline hover:text-indigo-800">Data Management</button>
+        </div>
+    </div>
+
+    <!-- MODALS -->
+    <!-- Quick Add/Rename -->
+    <div id="quickAddModal" class="fixed inset-0 z-modal hidden flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 transform transition-all scale-100" id="quickAddModalContent">
+            <h4 id="addModalTitle" class="text-xl font-bold mb-4 text-gray-800">Add New</h4>
+            <input id="addModalInput" type="text" placeholder="Enter name..." class="p-3 border rounded-lg w-full mb-4 focus:ring-2 focus:ring-indigo-500 outline-none">
+            <div class="flex justify-end gap-2">
+                <button onclick="window.closeModal('quickAddModal')" class="px-4 py-2 bg-gray-100 rounded-lg text-gray-600 font-medium hover:bg-gray-200">Cancel</button>
+                <button onclick="window.handleAction()" id="confirmActionButton" class="px-4 py-2 bg-indigo-600 rounded-lg text-white font-medium hover:bg-indigo-700">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Row -->
+    <div id="editRowModal" class="fixed inset-0 z-modal hidden flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 overflow-y-auto max-h-[90vh]" id="editRowModalContent">
+            <h4 class="text-xl font-bold mb-4 text-gray-800">Edit Price Detail</h4>
+            <div class="space-y-3">
+                <input id="editGradeInput" type="text" class="w-full p-2 border rounded font-bold" placeholder="Grade Name">
+                <div class="flex gap-2">
+                    <input id="editPriceInput" type="text" class="w-1/2 p-2 border rounded font-bold text-red-600 text-lg" placeholder="Price">
+                    <div class="flex w-1/2 gap-1">
+                        <input id="editWarrantyNum" type="number" class="w-1/3 p-2 border rounded text-center font-bold">
+                        <select id="editWarrantyUnit" class="w-2/3 p-2 border rounded text-sm" onchange="window.toggleWarrantyInput()">
+                            <option value="Months">Months</option><option value="Days">Days</option><option value="Years">Years</option><option value="Lifetime">Lifetime</option>
+                        </select>
+                    </div>
+                </div>
+                <textarea id="editNotesInput" rows="2" class="w-full p-2 border rounded" placeholder="Notes"></textarea>
+            </div>
+            <div class="flex justify-end mt-4 gap-2">
+                <button onclick="window.closeModal('editRowModal')" class="px-4 py-2 bg-gray-100 rounded-lg">Cancel</button>
+                <button onclick="window.saveRowEdit()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirm -->
+    <div id="deleteConfirmModal" class="fixed inset-0 z-modal-top hidden flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-xs text-center shadow-2xl">
+            <h4 class="font-bold text-lg mb-2 text-gray-800" id="deleteTitle">Delete?</h4>
+            <p id="deleteItemName" class="text-sm text-gray-500 mb-4"></p>
+            <div class="flex gap-2">
+                <button onclick="window.closeModal('deleteConfirmModal')" class="flex-1 py-2 bg-gray-100 rounded-lg">No</button>
+                <button onclick="window.executeDeleteAction()" class="flex-1 py-2 bg-red-600 text-white rounded-lg shadow">Yes, Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- All Services Modal -->
+    <div id="allServicesModal" class="fixed inset-0 z-modal hidden flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl p-6 h-[80vh] flex flex-col">
+            <div class="flex justify-between mb-4 border-b pb-2">
+                <h4 id="allServicesTitle" class="text-xl font-bold">Select Service</h4>
+                <button onclick="window.closeModal('allServicesModal')" class="text-gray-500 text-2xl">&times;</button>
+            </div>
+            <div id="allServicesGrid" class="grid grid-cols-2 md:grid-cols-3 gap-3 overflow-y-auto p-2"></div>
+        </div>
+    </div>
+
+    <!-- Service Manager Modal -->
+    <div id="serviceManagerModal" class="fixed inset-0 z-modal hidden flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl p-6 h-[80vh] flex flex-col">
+            <div class="flex justify-between mb-4 border-b pb-2">
+                <h4 class="text-xl font-bold">Manage Services</h4>
+                <button onclick="window.closeModal('serviceManagerModal')" class="text-gray-500 text-2xl">&times;</button>
+            </div>
+            <input type="text" id="managerSearchInput" oninput="window.renderServiceList(this.value)" placeholder="Search..." class="w-full p-2 border rounded mb-2">
+            <div id="serviceManagerList" class="overflow-y-auto flex-1 space-y-2 p-1"></div>
+        </div>
+    </div>
+
+    <!-- Admin/Import Modal -->
+    <div id="dataManagementModal" class="fixed inset-0 z-modal hidden flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-white rounded-xl w-full max-w-lg p-6 shadow-2xl">
+            <h4 class="font-bold text-xl mb-4 text-gray-800">Data Management</h4>
+            
+            <button onclick="window.manualRecovery()" class="w-full py-3 bg-yellow-100 text-yellow-700 font-bold rounded mb-4 border border-yellow-200">SCAN & RECOVER OLD DATA</button>
+
+            <button onclick="window.openServiceManagerModal()" class="w-full py-3 bg-blue-50 text-blue-600 font-bold rounded mb-4 border border-blue-100">Manage Services</button>
+            <textarea id="importTextarea" rows="4" class="w-full p-2 border rounded text-xs mb-2 font-mono" placeholder="CSV Data..."></textarea>
+            <div class="flex gap-2 mb-4">
+                <button onclick="window.exportCSVData()" class="flex-1 py-2 bg-green-600 text-white rounded">Export CSV</button>
+                <button onclick="window.importCSVData()" class="flex-1 py-2 bg-indigo-600 text-white rounded">Import CSV</button>
+            </div>
+            <button onclick="window.resetToDefaultData()" class="w-full py-2 text-red-500 text-sm border border-red-200 rounded">Reset Data to Default</button>
+            <button onclick="window.closeModal('dataManagementModal')" class="mt-4 w-full py-2 text-gray-500">Close</button>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full text-sm transition-opacity opacity-0 pointer-events-none z-[9999] font-medium shadow-lg">Notification</div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        window.fbModules = { initializeApp, getAuth, signInAnonymously, getFirestore, doc, setDoc, onSnapshot };
+        setTimeout(() => {
+             if (localStorage.getItem('my_firebase_config')) window.initAppWithConfig();
+             else document.getElementById('setupScreen').classList.remove('hidden');
+        }, 100);
+    </script>
+
+    <script>
+        // --- CONSTANTS ---
+        const COLLECTION_PATH = 'store_data';
+        const DOC_ID = 'pricing_master';
+        // THIS KEY WILL NOT CHANGE ANYMORE
+        const STABLE_STORAGE_KEY = 'repair_data_final_stable'; 
+
+        // --- GLOBAL VARIABLES ---
+        let priceStructure = {}, allModels = [], allServices = [];
+        let currentModel = '', currentEditingQuality = '', itemToDelete = '', deleteMode = '', currentActionType = {};
+        let db = null, auth = null, isOnline = false, activeSuggestionIndex = -1;
+
+        // --- RECOVERY LOGIC (SCAN ALL OLD KEYS) ---
+        window.manualRecovery = function() {
+            const legacyKeys = [
+                'repair_data_final_stable', 'local_pricing_data_v27', 'local_pricing_data_v25', 
+                'local_pricing_data_v22', 'local_pricing_data_v21', 'local_pricing_data_v20', 
+                'local_pricing_data_v16', 'local_pricing_data_v15', 'local_pricing_data_v11',
+                'local_pricing_data_v8', 'local_pricing_data_v7', 'local_pricing_data_v6', 
+                'local_pricing_data_v5', 'priceStructureData_EN_V2'
+            ];
+            
+            let foundData = null;
+            let maxItems = 0;
+
+            for (const key of legacyKeys) {
+                const raw = localStorage.getItem(key);
+                if (raw) {
+                    try {
+                        const parsed = JSON.parse(raw);
+                        // Check if this data has custom entries (more than default)
+                        // A simple check is counting models
+                        const count = Object.keys(parsed).length;
+                        if (count > 5) { // Assuming default has some, but real data has user entries
+                             // We prefer the one with the MOST data
+                             if (count > maxItems) {
+                                 maxItems = count;
+                                 foundData = parsed;
+                             }
+                        }
+                    } catch(e) {}
+                }
+            }
+
+            if (foundData) {
+                if(confirm(`Found old data with ${maxItems} models. Restore? (This will overwrite current)`)) {
+                    priceStructure = mergeWithDefaults(foundData);
+                    saveData(priceStructure);
+                    refreshDataLists();
+                    showToast("Recovered successfully!");
+                    window.closeModal('dataManagementModal');
+                }
+            } else {
+                alert("No old data found in this browser.");
+            }
+        }
+
+        function generateDefaultData() {
+            let data = {};
+            const iphones=["iPhone 6","iPhone 6 Plus","iPhone 6s","iPhone 6s Plus","iPhone 7","iPhone 7 Plus","iPhone 8","iPhone 8 Plus","iPhone X","iPhone XR","iPhone XS","iPhone XS Max","iPhone 11","iPhone 11 Pro","iPhone 11 Pro Max","iPhone 12","iPhone 12 Mini","iPhone 12 Pro","iPhone 12 Pro Max","iPhone 13","iPhone 13 Mini","iPhone 13 Pro","iPhone 13 Pro Max","iPhone 14","iPhone 14 Plus","iPhone 14 Pro","iPhone 14 Pro Max","iPhone 15","iPhone 15 Plus","iPhone 15 Pro","iPhone 15 Pro Max","iPhone 16","iPhone 16 Plus","iPhone 16 Pro","iPhone 16 Pro Max","iPhone 17","iPhone 17 Plus","iPhone 17 Pro","iPhone 17 Pro Max"];
+            const samsungS=["Samsung S8","Samsung S8+","Samsung S9","Samsung S9+","Samsung S10","Samsung S10+","Samsung S10e","Samsung S20","Samsung S20+","Samsung S20 Ultra","Samsung S20 FE","Samsung S21","Samsung S21+","Samsung S21 Ultra","Samsung S21 FE","Samsung S22","Samsung S22+","Samsung S22 Ultra","Samsung S23","Samsung S23+","Samsung S23 Ultra","Samsung S23 FE","Samsung S24","Samsung S24+","Samsung S24 Ultra","Samsung S25","Samsung S25+","Samsung S25 Ultra"];
+            const samsungNote=["Samsung Note 8","Samsung Note 9","Samsung Note 10","Samsung Note 10+","Samsung Note 10 Lite","Samsung Note 20","Samsung Note 20 Ultra"];
+            const samsungA=["Samsung A05","Samsung A05s","Samsung A15","Samsung A25","Samsung A35","Samsung A55","Samsung A04","Samsung A04s","Samsung A14","Samsung A24","Samsung A34","Samsung A54","Samsung A03","Samsung A13","Samsung A23","Samsung A33","Samsung A53","Samsung A73","Samsung A12","Samsung A22","Samsung A32","Samsung A52","Samsung A52s","Samsung A72"];
+            const oppo=["OPPO Find N3","OPPO Find N3 Flip","OPPO Find N2 Flip","OPPO Reno11 F","OPPO Reno11","OPPO Reno11 Pro","OPPO Reno10","OPPO Reno10 Pro","OPPO Reno10 Pro+","OPPO Reno8 T","OPPO Reno8 Z","OPPO Reno8","OPPO A79","OPPO A58","OPPO A38","OPPO A18","OPPO A98","OPPO A78","OPPO A77s","OPPO A57","OPPO A17","OPPO A17k"];
+            const vivo=["Vivo X100","Vivo X100 Pro","Vivo X90","Vivo X80","Vivo V30","Vivo V30e","Vivo V29","Vivo V29e","Vivo V27","Vivo V27e","Vivo Y100","Vivo Y36","Vivo Y27","Vivo Y17s","Vivo Y03","Vivo Y02t"];
+            const xiaomi=["Xiaomi 14","Xiaomi 14 Ultra","Xiaomi 13","Xiaomi 13T","Xiaomi 13T Pro","Xiaomi 12","Xiaomi 12T","Redmi Note 13","Redmi Note 13 Pro","Redmi Note 13 Pro+","Redmi Note 12","Redmi Note 12 Pro","Redmi Note 12s","Redmi 13C","Redmi 12","Redmi A3"];
+            const realme=["Realme GT5 Pro","Realme 11 Pro","Realme 11 Pro+","Realme 11","Realme C67","Realme C65","Realme C55","Realme C53","Realme C51","Realme Note 50"];
+            const others=["Huawei P60 Pro","Huawei Mate 60","Huawei P50","Honor X9b","Honor 90","Honor X8b","Honor X7b","Infinix Note 40 Pro","Infinix Note 30","Infinix Hot 40","Infinix Hot 30","Infinix Smart 8","Tecno Camon 30","Tecno Pova 6","Tecno Spark 20","Tecno Spark 20 Pro","Tecno Spark 10"];
+            const services=["Back Glass (Kính lưng) ຝາຫລັງ","Battery (Pin) ແບັດເຕີລີ","Memory upgrade(Nâng cấp bộ nhớ) ເພີ່ມຄວາມຈຳ","Charging Port (Chân sạc)ກົນສາກ","Face ID ສະແກນໜ້າ","Front Camera ( Camera trước) ກ້ອງໜ້າ","Glass Screen (Kính màn hình) ລອກແກ້ວຈໍ","Power Flex (Cáp nguồn) ສາຍເປີດ-ປິດ","Rear Camera (Camera sau) ກ້ອງຫລັງ","Screen (Màn hình) ປ່ຽນຈໍ","Speaker (Loa) ລຳໂພງ","Volume Flex (Cáp âm lượng) ສາຍເພີ່ມສຽງ-ລົດສຽງ","Bypass + FRP ບາຍພາສ","Body (vỏ) ບໍດີ້","Microphone ໄມ","SIM tray (Khay sim) ແຜ່ນຮອງຊິມ","Button (Phím bấm) ປຸ່ມ","IC Audio ໄອຊີສຽງ","IC Power ໄອຊີພາວເວີ້","IC Charging ໄອຊີສາກ","IC Wifi ໄອຊີໄວຟາຍ","Camera Glass (Mặt kính camera) ແກ້ວກ້ອງ","Mainboard (Bo mạch) ເມນບອດ","Display Cable (Cáp màn hình) ສາຍແພຈໍ","Motherboard flex cable (Cáp nối bo mạch)","Flashlight (Đèn pin) ໄຟສາຍ","Sensor Cable ( Cáp cảm biến) ສາຍແພເຊັນເຊີ້","Network error (Lỗi mạng) ສັນຍານອິນເຕີເນັດ","Phone cleaning service (Dịch vụ vệ sinh điện thoại) ລ້າງເຄື່ອງ","Mainboard Repair ແປງເມນບອດ"];
+            
+            const allList = [...iphones,...samsungS,...samsungNote,...samsungA,...oppo,...vivo,...xiaomi,...realme,...others];
+            allList.forEach(m => {
+                data[m] = {};
+                services.forEach(s => { data[m][s] = { "Standard Grade": { price: 0, warranty: "6 Months", notes: "No info yet" } }; });
+            });
+            return data;
+        }
+
+        // --- INIT ---
+        window.saveConfiguration = function() {
+            let input = document.getElementById('firebaseConfigInput').value.trim();
+            if (input.startsWith("const firebaseConfig =")) input = input.replace("const firebaseConfig =", "").trim();
+            if (input.endsWith(";")) input = input.slice(0, -1).trim();
+            try {
+                const config = new Function("return " + input)();
+                if (!config.apiKey) throw new Error();
+                localStorage.setItem('my_firebase_config', JSON.stringify(config));
+                location.reload();
+            } catch (e) { alert("Invalid Config!"); }
+        };
+
+        window.useOfflineMode = function() { 
+            localStorage.setItem('offline_mode', 'true'); 
+            document.getElementById('setupScreen').classList.add('hidden'); 
+            initOffline(); 
+        };
+
+        window.resetConfig = function() { 
+            if(confirm("Bạn có chắc chắn muốn đăng xuất?")) { 
+                localStorage.removeItem('my_firebase_config'); 
+                localStorage.removeItem('offline_mode'); 
+                location.reload(); 
+            } 
+        };
+
+        window.initAppWithConfig = async function() {
+            try {
+                const config = JSON.parse(localStorage.getItem('my_firebase_config'));
+                const { initializeApp, getAuth, signInAnonymously, getFirestore, doc, onSnapshot } = window.fbModules;
+                const app = initializeApp(config);
+                auth = getAuth(app); db = getFirestore(app);
+                document.getElementById('setupScreen').classList.add('hidden');
+                document.getElementById('mainApp').classList.remove('hidden');
+                
+                try { await signInAnonymously(auth); } catch(e) {}
+                
+                onSnapshot(doc(db, COLLECTION_PATH, DOC_ID), (docSnap) => {
+                    if (docSnap.exists()) {
+                        const cloudData = docSnap.data().data || {};
+                        // If cloud data seems empty (just defaults), try to see if we have local recovery data that is better
+                        const recovered = attemptDataRecovery();
+                        if (recovered && Object.keys(recovered).length > Object.keys(cloudData).length) {
+                             priceStructure = mergeWithDefaults(recovered);
+                             // Push recovery to cloud
+                             saveData(priceStructure);
+                        } else {
+                             priceStructure = mergeWithDefaults(cloudData);
+                        }
+                    } else {
+                        // First time: try recovery
+                        const recovered = attemptDataRecovery();
+                        priceStructure = recovered ? mergeWithDefaults(recovered) : generateDefaultData();
+                        saveData(priceStructure);
+                    }
+                    refreshDataLists();
+                    updateSyncStatus('online');
+                }, (err) => { 
+                    alert("Lỗi kết nối Cloud: " + err.code); 
+                    updateSyncStatus('error'); 
+                    initOffline(); 
+                });
+                isOnline = true;
+            } catch (e) { alert("Lỗi khởi tạo: " + e.message); initOffline(); }
+            setupEventListeners();
+        };
+
+        function initOffline() {
+            // Try stable key first
+            let local = localStorage.getItem(STABLE_STORAGE_KEY);
+            let data = local ? JSON.parse(local) : attemptDataRecovery();
+            
+            if (!data) { data = generateDefaultData(); saveData(data); }
+            else data = mergeWithDefaults(data);
+            
+            priceStructure = data;
+            refreshDataLists();
+            updateSyncStatus('offline');
+            setupEventListeners();
+        }
+
+        function mergeWithDefaults(loaded) {
+            const def = generateDefaultData();
+            Object.keys(def).forEach(m => {
+                if (!loaded[m]) loaded[m] = def[m];
+                else {
+                    Object.keys(def[m]).forEach(s => { if (!loaded[m][s]) loaded[m][s] = def[m][s]; });
+                }
+            });
+            return loaded;
+        }
+
+        async function saveData(data) {
+            priceStructure = data;
+            // ALWAYS SAVE TO STABLE KEY
+            localStorage.setItem(STABLE_STORAGE_KEY, JSON.stringify(data));
+            if (isOnline && db) {
+                try { 
+                    const { doc, setDoc } = window.fbModules;
+                    await setDoc(doc(db, COLLECTION_PATH, DOC_ID), { data });
+                    showToast("Saved to Cloud");
+                } catch (e) { showToast("Cloud Save Failed", false); }
+            } else { showToast("Saved Offline"); }
+        }
+
+        function refreshDataLists() {
+            allModels = Object.keys(priceStructure).sort();
+            allServices = [];
+            Object.values(priceStructure).forEach(m => Object.keys(m).forEach(s => { if (!allServices.includes(s)) allServices.push(s); }));
+            allServices.sort();
+            if (currentModel && document.getElementById('serviceInput').value) displayPriceTable();
+        }
+
+        // --- UI FUNCTIONS ---
+        window.updateSuggestions = function(val, type) {
+            activeSuggestionIndex = -1;
+            const container = document.getElementById(type + 'Suggestions');
+            const source = type === 'model' ? allModels : (currentModel ? Object.keys(priceStructure[currentModel]||{}) : []);
+            const matches = source.filter(i => i.toLowerCase().includes(val.toLowerCase()));
+            let html = '';
+            const limit = type === 'service' ? 10 : 50;
+            matches.slice(0, limit).forEach(i => {
+                html += `<div class="suggestion-item text-sm" onmousedown="window.selectItem('${i}', '${type}')">${i}</div>`;
+            });
+            if (type === 'service' && matches.length > 10) {
+                html += `<div class="show-all-item text-sm" onmousedown="window.handleShowAllClick(event)">Show All (${matches.length})</div>`;
+            }
+            container.innerHTML = html;
+            container.classList.remove('hidden');
+            
+            const exact = source.includes(val);
+            const btnAdd = document.getElementById('add' + (type==='model'?'Model':'Service') + 'Button');
+            const btnRename = document.getElementById('rename' + (type==='model'?'Model':'Service') + 'Button');
+            if(btnAdd) { 
+                btnAdd.disabled = !(!exact && val.trim()); 
+                btnAdd.className = (!exact && val.trim()) ? 'p-3 bg-indigo-600 text-white rounded-r-xl hover:bg-indigo-700' : 'p-3 bg-gray-400 text-white rounded-r-xl'; 
+            }
+            if(btnRename) { 
+                btnRename.disabled = !exact; 
+                btnRename.className = exact ? 'p-3 text-indigo-600 border-l hover:text-indigo-800' : 'p-3 text-gray-400 border-l'; 
+            }
+        };
+
+        window.selectItem = function(val, type) {
+            document.getElementById(type + 'Input').value = val;
+            document.getElementById(type + 'Suggestions').classList.add('hidden');
+            if (type === 'model') {
+                currentModel = val;
+                const sInput = document.getElementById('serviceInput');
+                sInput.disabled = false; sInput.classList.remove('bg-gray-100'); sInput.value = ''; sInput.focus();
+                window.updateSuggestions('', 'service');
+                toggleTable(false);
+            } else {
+                displayPriceTable();
+            }
+        };
+
+        window.handleShowAllClick = function(e) { e.preventDefault(); e.stopPropagation(); window.showAllServices(); };
+
+        function toggleTable(show) {
+            document.getElementById('resultDisplay').classList.toggle('hidden', !show);
+            document.getElementById('quoteStatus').classList.toggle('hidden', show);
+            document.getElementById('priceComparisonTable').classList.toggle('hidden', !show);
+            document.getElementById('addRowBtn').classList.toggle('hidden', !show);
+        }
+
+        function displayPriceTable() {
+            const svc = document.getElementById('serviceInput').value;
+            if (!currentModel || !priceStructure[currentModel] || !priceStructure[currentModel][svc]) return toggleTable(false);
+            const data = priceStructure[currentModel][svc];
+            let html = `<table class="price-table w-full text-sm text-left text-gray-600"><thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b"><tr><th class="px-4 py-3 w-1/4">Component Grade</th><th class="px-4 py-3 w-1/3">Notes</th><th class="px-4 py-3 text-right">Price (LAK)</th><th class="px-4 py-3 text-center">Warranty</th><th class="px-4 py-3 text-center">Actions</th></tr></thead><tbody>`;
+            Object.keys(data).forEach(k => {
+                const d = data[k];
+                html += `<tr class="border-b hover:bg-indigo-50"><td class="px-4 py-3 font-bold">${k}</td><td class="px-4 py-3 text-xs">${d.notes}</td><td class="px-4 py-3 text-right font-bold text-red-600">${formatMoney(d.price)}</td><td class="px-4 py-3 text-center text-xs bg-green-50 text-green-700 rounded">${d.warranty}</td><td class="px-4 py-3 text-center"><button onclick="window.openEditModal('${k.replace(/'/g, "\\'")}')" class="text-indigo-600 p-2 text-lg">✎</button><button onclick="window.openDeleteConfirmModal('${k.replace(/'/g, "\\'")}')" class="text-red-500 p-2 text-lg">🗑</button></td></tr>`;
+            });
+            document.getElementById('priceComparisonTable').innerHTML = html + '</tbody></table>';
+            document.getElementById('tableTitle').innerText = `${currentModel} - ${svc}`;
+            toggleTable(true);
+        }
+
+        window.openEditModal = function(key) {
+            currentEditingQuality = key;
+            const d = priceStructure[currentModel][document.getElementById('serviceInput').value][key];
+            document.getElementById('editGradeInput').value = key;
+            document.getElementById('editPriceInput').value = d.price.toLocaleString('en-US');
+            document.getElementById('editNotesInput').value = d.notes;
+            const wParts = d.warranty.split(' ');
+            if (d.warranty.includes('Trọn đời') || d.warranty.includes('Lifetime')) {
+                document.getElementById('editWarrantyUnit').value = 'Lifetime';
+                document.getElementById('editWarrantyNum').style.display = 'none';
+            } else {
+                document.getElementById('editWarrantyNum').value = parseInt(wParts[0])||1;
+                document.getElementById('editWarrantyUnit').value = wParts[1]||'Months';
+                document.getElementById('editWarrantyNum').style.display = 'block';
+            }
+            document.getElementById('editRowModal').classList.remove('hidden');
+        };
+
+        window.closeEditModal = function() { document.getElementById('editRowModal').classList.add('hidden'); };
+        window.saveRowEdit = function() {
+            const name = document.getElementById('editGradeInput').value.trim();
+            const price = parseInt(document.getElementById('editPriceInput').value.replace(/,/g,'')) || 0;
+            const notes = document.getElementById('editNotesInput').value.trim();
+            const unit = document.getElementById('editWarrantyUnit').value;
+            const num = document.getElementById('editWarrantyNum').value;
+            const w = (unit === 'Trọn đời' || unit === 'Lifetime') ? 'Lifetime Warranty' : `${num} ${unit}`;
+            const svc = document.getElementById('serviceInput').value;
+            
+            let temp = JSON.parse(JSON.stringify(priceStructure));
+            if (name !== currentEditingQuality) delete temp[currentModel][svc][currentEditingQuality];
+            temp[currentModel][svc][name] = { price, warranty: w, notes };
+            saveData(temp);
+            window.closeModal('editRowModal');
+            displayPriceTable();
+        };
+
+        window.openActionModal = function(t, a) {
+            currentActionType = { type:t, action:a };
+            document.getElementById('addModalTitle').innerText = t==='model'?"Add/Edit Model":"Add/Edit Service";
+            const val = document.getElementById(t + 'Input').value;
+            document.getElementById('addModalInput').value = (a === 'rename') ? val : '';
+            document.getElementById('quickAddModal').classList.remove('hidden');
+            setTimeout(() => document.getElementById('addModalInput').focus(), 50);
+        };
+        window.closeActionModal = function() { document.getElementById('quickAddModal').classList.add('hidden'); };
+        window.handleAction = function() {
+            const val = document.getElementById('addModalInput').value.trim();
+            if(!val) return alert("Name required");
+            let temp = JSON.parse(JSON.stringify(priceStructure));
+            const { type, action } = currentActionType;
+            if(action === 'add') {
+                if(type === 'model') {
+                    if(temp[val]) return alert("Exists");
+                    const def = generateDefaultData();
+                    const sample = def[Object.keys(def)[0]];
+                    const allSvcs = new Set([...Object.keys(sample), ...allServices]);
+                    temp[val] = {};
+                    allSvcs.forEach(s => temp[val][s] = { "Standard Grade": { price: 0, warranty: "6 Months", notes: "" } });
+                } else {
+                    if(temp[currentModel][val]) return alert("Exists");
+                    Object.keys(temp).forEach(m => { if(!temp[m][val]) temp[m][val] = { "Standard Grade": { price: 0, warranty: "6 Months", notes: "" } }; });
+                }
+            } else {
+                if (type === 'model') {
+                    temp[val] = temp[currentModel]; delete temp[currentModel];
+                    document.getElementById('modelInput').value = val; window.selectItem(val, 'model');
+                } else {
+                    const old = document.getElementById('serviceInput').value;
+                    Object.keys(temp).forEach(m => {
+                        if(temp[m][old]) {
+                            temp[m][val] = temp[m][old];
+                            delete temp[m][old];
+                        }
+                    });
+                    document.getElementById('serviceInput').value = val; window.selectItem(val, 'service');
+                }
+            }
+            saveData(temp);
+            window.closeModal('quickAddModal');
+        };
+
+        window.addQualityLevelRow = function() {
+             const svc = document.getElementById('serviceInput').value;
+             let temp = JSON.parse(JSON.stringify(priceStructure));
+             let newName = "Linh kiện mới"; let count = 1;
+             while(temp[currentModel][svc][newName]) newName = `Linh kiện mới ${count++}`;
+             temp[currentModel][svc][newName] = { price: 0, warranty: "3 Months", notes: "" };
+             saveData(temp);
+             displayPriceTable();
+             setTimeout(() => window.openEditModal(newName), 100);
+        };
+
+        // --- SERVICE MANAGER ---
+        window.openServiceManagerModal = function() {
+            window.closeAdminModal(); 
+            document.getElementById('managerSearchInput').value = '';
+            window.renderServiceList(''); 
+            document.getElementById('serviceManagerModal').classList.remove('hidden');
+        };
+        window.renderServiceList = function(filter) {
+            const list = document.getElementById('serviceManagerList');
+            list.innerHTML = '';
+            allServices.filter(s => s.toLowerCase().includes(filter.toLowerCase())).forEach(s => {
+                list.innerHTML += `<div class="flex justify-between p-3 bg-gray-50 rounded border mb-2"><span class="text-sm">${s}</span><button class="text-red-500 bg-white p-2 rounded border hover:bg-red-50" onclick="window.confirmDeleteGlobal('${s.replace(/'/g,"\\'")}')">🗑</button></div>`;
+            });
+        };
+        window.confirmDeleteGlobal = function(s) {
+             itemToDelete = s; deleteMode = 'GLOBAL';
+             document.getElementById('deleteTitle').innerText = "Delete Everywhere?";
+             document.getElementById('deleteItemName').innerText = s;
+             document.getElementById('deleteConfirmModal').classList.remove('hidden');
+        };
+        window.executeDeleteAction = function() {
+             let temp = JSON.parse(JSON.stringify(priceStructure));
+             if (deleteMode === 'GLOBAL') {
+                 Object.keys(temp).forEach(m => { if(temp[m][itemToDelete]) delete temp[m][itemToDelete]; });
+                 saveData(temp);
+                 refreshDataLists();
+                 window.renderServiceList(document.getElementById('managerSearchInput').value);
+             } else {
+                const svc = document.getElementById('serviceInput').value;
+                delete temp[currentModel][svc][itemToDelete];
+                saveData(temp);
+                displayPriceTable();
+            }
+            window.closeDeleteConfirmModal();
+        };
+
+        // --- UTILS ---
+        function updateSyncStatus(status) {
+            const el = document.getElementById('syncStatus');
+            const txt = document.getElementById('dataMode');
+            if(!el || !txt) return; 
+
+            if (status === 'online') { 
+                el.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse"></span> Online'; 
+                txt.innerText="Synced"; 
+                txt.className = "text-[10px] text-green-600 mt-1 font-medium";
+            } else if (status === 'error') { 
+                el.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500 mr-2"></span> Error'; 
+                txt.className = "text-[10px] text-red-500 mt-1";
+            } else { 
+                el.innerHTML = '<span class="w-2 h-2 rounded-full bg-gray-400 mr-2"></span> Offline'; 
+                txt.innerText="Local Data"; 
+                txt.className = "text-[10px] text-gray-500 mt-1";
+            }
+        }
+        
+        function showToast(msg) {
+            const t = document.getElementById('toast'); t.innerText = msg; t.style.opacity='1'; t.style.transform='translate(-50%,0)';
+            setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translate(-50%,20px)'; }, 2000);
+        }
+        function formatMoney(n) { return (n||0).toLocaleString('en-US') + ' LAK'; }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+        function openAdminModal() { document.getElementById('dataManagementModal').classList.remove('hidden'); }
+        function closeAdminModal() { document.getElementById('dataManagementModal').classList.add('hidden'); }
+        function closeServiceManagerModal() { document.getElementById('serviceManagerModal').classList.add('hidden'); }
+        function closeAllServicesModal() { document.getElementById('allServicesModal').classList.add('hidden'); }
+        function resetToDefaultData() { if(confirm("Reset?")) { saveData(generateDefaultData()); refreshDataLists(); window.closeAdminModal(); } }
+        function openDeleteConfirmModal(k) { itemToDelete = k; deleteMode = 'ROW'; document.getElementById('deleteTitle').innerText = "Delete Row?"; document.getElementById('deleteItemName').innerText = k; document.getElementById('deleteConfirmModal').classList.remove('hidden'); }
+        function closeDeleteConfirmModal() { document.getElementById('deleteConfirmModal').classList.add('hidden'); }
+        function toggleWarrantyInput() { const u = document.getElementById('editWarrantyUnit').value; document.getElementById('editWarrantyNum').style.display = (u==='Trọn đời'||u==='Lifetime')?'none':'block'; }
+        function exportCSVData() {}; function importCSVData() {};
+        
+        window.handleClickOutside = function(e) {
+            if (!e.target.closest('#modelSearchContainer')) document.getElementById('modelSuggestions').classList.add('hidden');
+            if (!e.target.closest('#serviceSearchContainer')) document.getElementById('serviceSuggestions').classList.add('hidden');
+        };
+
+        // --- KEYBOARD & EVENTS ---
+        function setupEventListeners() {
+            const sInput = document.getElementById('serviceInput');
+            const mInput = document.getElementById('modelInput');
+            const priceInput = document.getElementById('editPriceInput');
+
+            function handleKeyNavigation(e, type) {
+                 const container = document.getElementById(type + 'Suggestions');
+                 const items = container.querySelectorAll('.suggestion-item, .show-all-item');
+                 if (container.classList.contains('hidden') || !items.length) return;
+                 if (e.key === 'ArrowDown') { e.preventDefault(); activeSuggestionIndex = (activeSuggestionIndex + 1) % items.length; updateHighlight(items); }
+                 else if (e.key === 'ArrowUp') { e.preventDefault(); activeSuggestionIndex = (activeSuggestionIndex - 1 + items.length) % items.length; updateHighlight(items); }
+                 else if (e.key === 'Enter') { e.preventDefault(); if(activeSuggestionIndex > -1) items[activeSuggestionIndex].onmousedown(e); }
+                 else if (e.key === 'Escape') { container.classList.add('hidden'); activeSuggestionIndex = -1; }
+            }
+            function updateHighlight(items) { items.forEach((it, i) => { if(i===activeSuggestionIndex) { it.classList.add('active-suggestion'); it.scrollIntoView({block:'nearest'}); } else it.classList.remove('active-suggestion'); }); }
+            window.handleKeyNavigation = handleKeyNavigation;
+
+            mInput.addEventListener('keydown', (e) => handleKeyNavigation(e, 'model'));
+            sInput.addEventListener('keydown', (e) => handleKeyNavigation(e, 'service'));
+            sInput.addEventListener('focus', () => window.updateSuggestions(sInput.value, 'service'));
+            sInput.addEventListener('mouseenter', () => { if(!sInput.disabled) window.updateSuggestions(sInput.value, 'service'); });
+            priceInput.addEventListener('keyup', function() { let v = this.value.replace(/,/g,'').replace(/\D/g,''); if(v) this.value = parseInt(v).toLocaleString('en-US'); });
+        }
+
+        if (typeof window.startFirebaseApp === 'function') window.startFirebaseApp();
+    </script>
+</body>
 </html>
