@@ -299,9 +299,6 @@
         const COLLECTION_PATH = 'store_data', DOC_ID = 'pricing_master'; 
         let isResetting = false; 
 
-        // Helper: Sanitize keys to prevent Firestore errors (no . / [ ] #)
-        const sanitizeKey = (key) => key.trim().replace(/[./#\[\]\\]/g, "_");
-
         const generateDefaultData = () => {
             let data = {};
             const iphones=["iPhone 6","iPhone 6 Plus","iPhone 6s","iPhone 6s Plus","iPhone 7","iPhone 7 Plus","iPhone 8","iPhone 8 Plus","iPhone X","iPhone XR","iPhone XS","iPhone XS Max","iPhone 11","iPhone 11 Pro","iPhone 11 Pro Max","iPhone 12","iPhone 12 Mini","iPhone 12 Pro","iPhone 12 Pro Max","iPhone 13","iPhone 13 Mini","iPhone 13 Pro","iPhone 13 Pro Max","iPhone 14","iPhone 14 Plus","iPhone 14 Pro","iPhone 14 Pro Max","iPhone 15","iPhone 15 Plus","iPhone 15 Pro","iPhone 15 Pro Max","iPhone 16","iPhone 16 Plus","iPhone 16 Pro","iPhone 16 Pro Max","iPhone 17","iPhone 17 Plus","iPhone 17 Pro","iPhone 17 Pro Max"];
@@ -354,7 +351,6 @@
 
                     if (docSnap.exists()) {
                         const cloudData = docSnap.data().data || {};
-                        // FIX: Ensure we use cloud data as base, but respect local defaults logic
                         if (Object.keys(cloudData).length === 0) {
                              priceStructure = generateDefaultData();
                              saveData(priceStructure);
@@ -364,16 +360,11 @@
                         updateSyncStatus('online');
                         refreshDataLists();
                     } else {
-                        // First time or empty
                         priceStructure = generateDefaultData();
                         saveData(priceStructure);
                         refreshDataLists();
                     }
-                }, (err) => { 
-                    console.error("Snapshot error:", err);
-                    updateSyncStatus('error'); 
-                    initOffline(); 
-                });
+                }, (err) => { alert("Lỗi Cloud: " + err.code); updateSyncStatus('error'); initOffline(); });
                 isOnline = true;
             } catch (e) { alert("Lỗi Khởi tạo"); updateSyncStatus('error'); initOffline(); }
             setupEventListeners();
@@ -388,18 +379,17 @@
             setupEventListeners();
         };
 
-        // FIXED: Use Deep Copy to prevent reference sharing bugs
         const mergeWithDefaults = (loadedData) => {
             const defaults = generateDefaultData();
-            // Restore missing Models
+            // Restore missing Models and Services to ensure UI is full
             Object.keys(defaults).forEach(m => {
                 if (!loadedData[m]) {
-                    loadedData[m] = JSON.parse(JSON.stringify(defaults[m])); // Deep copy
+                    loadedData[m] = defaults[m];
                 } else {
-                    // Restore missing Services
+                    // If Model exists, ensure all default services also exist (restore from sparse data)
                     Object.keys(defaults[m]).forEach(s => {
                         if (!loadedData[m][s]) {
-                            loadedData[m][s] = JSON.parse(JSON.stringify(defaults[m][s])); // Deep copy
+                            loadedData[m][s] = defaults[m][s];
                         }
                     });
                 }
@@ -410,7 +400,6 @@
         const saveData = async (newData) => {
             priceStructure = newData;
             localStorage.setItem('local_pricing_data_v8', JSON.stringify(newData));
-            
             if (isOnline && db) {
                 try {
                     // COMPRESSION: Remove default/empty entries before saving to Cloud
@@ -424,7 +413,7 @@
                                      const q = dataToSave[m][s]["Standard Grade"];
                                      // If matched default signature, delete it to save space
                                      if(q && q.price === 0 && q.warranty === "6 Tháng" && (q.notes === "Chưa có thông tin" || q.notes === "") && Object.keys(dataToSave[m][s]).length === 1) {
-                                       delete dataToSave[m][s];
+                                         delete dataToSave[m][s];
                                      }
                                 }
                             });
@@ -436,10 +425,8 @@
                     await setDoc(doc(db, COLLECTION_PATH, DOC_ID), { data: dataToSave });
                     showToast("Đã lưu lên Cloud");
                 } catch (e) { 
-                    console.error("Save Error:", e);
-                    // Explicit warning for common Firestore errors
-                    if(e.code === 'permission-denied') showToast("Lỗi: Không có quyền ghi dữ liệu!", false);
-                    else showToast("Lỗi lưu Cloud: " + e.code, false); 
+                    console.error(e);
+                    showToast("Lỗi lưu Cloud: " + e.code, false); 
                 }
             } else { showToast("Đã lưu Offline"); }
         };
@@ -605,8 +592,8 @@
                 const cols = simpleParse(rows[i]);
                 
                 if (cols.length >= 4) {
-                    const model = sanitizeKey(cols[0].replace(/^"|"$/g, ''));
-                    const service = sanitizeKey(cols[1].replace(/^"|"$/g, ''));
+                    const model = cols[0].replace(/^"|"$/g, '').trim();
+                    const service = cols[1].replace(/^"|"$/g, '').trim();
                     const quality = cols[2].replace(/^"|"$/g, '').trim();
                     const price = parseInt(cols[3].replace(/\D/g, '')) || 0;
                     const warranty = cols[4] ? cols[4].replace(/^"|"$/g, '').trim() : "Không bảo hành";
@@ -803,35 +790,21 @@
             setTimeout(() => document.getElementById('addModalInput').focus(), 50);
         };
         window.closeActionModal = () => document.getElementById('quickAddModal').classList.add('hidden');
-        
         window.handleAction = () => {
-            let val = document.getElementById('addModalInput').value.trim();
+            const val = document.getElementById('addModalInput').value.trim();
             if(!val) return showToast("Vui lòng nhập tên!", false);
-
-            // AUTO-FIX: Sanitize input to prevent Firestore crash
-            val = sanitizeKey(val);
-            
             let temp = JSON.parse(JSON.stringify(priceStructure));
             const { type, action } = currentActionType;
             
             if(action === 'add') {
                 if(type === 'model') {
                     if(temp[val]) return showToast("Đã tồn tại", false);
-                    
-                    // FIX: Ensure new model has ALL services (not just defaults)
-                    // Collect all unique services from existing models
-                    const allExistingServices = new Set();
-                    Object.values(temp).forEach(m => Object.keys(m).forEach(s => allExistingServices.add(s)));
-                    // Fallback if empty (first run)
-                    if(allExistingServices.size === 0) {
-                        const def = generateDefaultData();
-                        Object.keys(def[Object.keys(def)[0]]).forEach(s => allExistingServices.add(s));
-                    }
-                    
+                    const def = generateDefaultData();
+                    const sample = def[Object.keys(def)[0]]; 
+                    const allSvcs = new Set(Object.keys(sample));
+                    Object.values(temp).forEach(m => Object.keys(m).forEach(s => allSvcs.add(s)));
                     temp[val] = {};
-                    allExistingServices.forEach(s => {
-                        temp[val][s] = { "Standard Grade": { price: 0, warranty: "6 Tháng", notes: "Chưa có thông tin" } };
-                    });
+                    allSvcs.forEach(s => temp[val][s] = { "Standard Grade": { price: 0, warranty: "6 Tháng", notes: "Chưa có thông tin" } });
                 } else {
                     if(temp[currentModel][val]) return showToast("Đã tồn tại", false);
                     Object.keys(temp).forEach(m => {
@@ -841,25 +814,15 @@
             } else {
                  if (type === 'model') {
                     temp[val] = temp[currentModel]; delete temp[currentModel];
-                    // UI will update below
+                    document.getElementById('modelInput').value = val; window.selectItem(val, 'model');
                 } else {
                     const old = document.getElementById('serviceInput').value;
                     temp[currentModel][val] = temp[currentModel][old]; delete temp[currentModel][old];
+                    document.getElementById('serviceInput').value = val; window.selectItem(val, 'service');
                 }
             }
             saveData(temp);
             closeActionModal();
-
-            // FIX: Refresh UI Immediately so user sees the new item
-            refreshDataLists();
-            
-            if (type === 'model') {
-                document.getElementById('modelInput').value = val;
-                window.selectItem(val, 'model');
-            } else {
-                document.getElementById('serviceInput').value = val;
-                window.selectItem(val, 'service');
-            }
         };
 
         window.addQualityLevelRow = () => {
