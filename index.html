@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Báo Giá Sửa Chữa (Cloud Pro v2)</title>
+    <title>Báo Giá Sửa Chữa (Cloud Pro v2.2 - Fix Loop)</title>
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -391,31 +391,22 @@
                 onSnapshot(doc(db, COLLECTION_PATH, DOC_ID), (docSnap) => {
                     if (isResetting) return; 
 
+                    // FIX LOOP: Ignore snapshot if it triggered by our own local write (Pending Writes = true)
+                    if (docSnap.metadata.hasPendingWrites) return;
+
                     if (docSnap.exists()) {
                         const cloudData = docSnap.data().data || {};
                         
-                        // NEW LOGIC: MERGE CLOUD WITH LOCAL IF CLOUD IS "DEFAULT/EMPTY" BUT LOCAL IS "RICH"
-                        if (Object.keys(cloudData).length === 0) {
-                             // Check if we have local data to push?
-                             const local = localStorage.getItem('local_pricing_data_v8');
-                             if(local && local.length > 5000) { // arbitrary size check to see if it has data
-                                 // We have local data, Cloud is empty. PUSH TO CLOUD.
-                                 console.log("Cloud empty, pushing Local to Cloud...");
-                                 priceStructure = JSON.parse(local);
-                                 saveData(priceStructure);
-                             } else {
-                                 priceStructure = generateDefaultData();
-                             }
-                        } else {
-                             priceStructure = mergeWithDefaults(cloudData);
-                             // Save back to local to sync
-                             localStorage.setItem('local_pricing_data_v8', JSON.stringify(priceStructure));
-                        }
+                        // FIX LOOP: If Document exists, Cloud IS the source of truth, even if data is empty.
+                        // Do NOT attempt to push local data if Cloud data is empty/compressed.
+                        // Just merge and sync down.
+                        priceStructure = mergeWithDefaults(cloudData);
+                        localStorage.setItem('local_pricing_data_v8', JSON.stringify(priceStructure));
+                        
                         updateSyncStatus('online');
                         refreshDataLists();
                     } else {
-                        // Document doesn't exist yet on Cloud
-                        // Check local
+                        // Document doesn't exist yet on Cloud. This is the only case we push local -> cloud automatically.
                         const local = localStorage.getItem('local_pricing_data_v8');
                         if(local && local.length > 5000) {
                             console.log("No Cloud Doc, pushing Local to Cloud...");
