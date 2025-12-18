@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Báo Giá Sửa Chữa (Cloud Pro v2.2 - Fix Loop)</title>
+    <title>Báo Giá Sửa Chữa (Cloud Pro v2.3 - Sync Order)</title>
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -397,16 +397,14 @@
                     if (docSnap.exists()) {
                         const cloudData = docSnap.data().data || {};
                         
-                        // FIX LOOP: If Document exists, Cloud IS the source of truth, even if data is empty.
-                        // Do NOT attempt to push local data if Cloud data is empty/compressed.
-                        // Just merge and sync down.
+                        // FIX LOOP: If Document exists, Cloud IS the source of truth
                         priceStructure = mergeWithDefaults(cloudData);
                         localStorage.setItem('local_pricing_data_v8', JSON.stringify(priceStructure));
                         
                         updateSyncStatus('online');
                         refreshDataLists();
                     } else {
-                        // Document doesn't exist yet on Cloud. This is the only case we push local -> cloud automatically.
+                        // Document doesn't exist yet on Cloud.
                         const local = localStorage.getItem('local_pricing_data_v8');
                         if(local && local.length > 5000) {
                             console.log("No Cloud Doc, pushing Local to Cloud...");
@@ -708,7 +706,14 @@
                     if (model && service && quality) {
                         if (!temp[model]) temp[model] = {};
                         if (!temp[model][service]) temp[model][service] = {};
-                        temp[model][service][quality] = { price, warranty, notes };
+                        // Preserve previous data if exists to keep 'order' field if any
+                        const old = temp[model][service][quality];
+                        temp[model][service][quality] = { 
+                            price, 
+                            warranty, 
+                            notes,
+                            order: old ? old.order : undefined // Keep existing order if updating
+                        };
                         importedCount++;
                     }
                 }
@@ -849,6 +854,18 @@
             const svc = document.getElementById('serviceInput').value;
             if (!currentModel || !priceStructure[currentModel] || !priceStructure[currentModel][svc]) return toggleTable(false);
             const data = priceStructure[currentModel][svc];
+            
+            // CONVERT TO ARRAY TO HANDLE SORTING
+            let entries = Object.entries(data);
+
+            // SORT BY 'order' PROPERTY (Fix Cloud Sync Order Issue)
+            entries.sort((a, b) => {
+                const orderA = (a[1].order !== undefined) ? a[1].order : 9999;
+                const orderB = (b[1].order !== undefined) ? b[1].order : 9999;
+                if (orderA !== orderB) return orderA - orderB;
+                return a[0].localeCompare(b[0]); // Fallback: Alphabetical
+            });
+
             let html = `<table class="price-table w-full text-sm text-left text-gray-600">
                 <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b">
                     <tr>
@@ -862,8 +879,7 @@
                 </thead>
                 <tbody ondragover="handleDragOver(event)" ondrop="handleDrop(event)">`;
             
-            Object.keys(data).forEach(k => {
-                const d = data[k];
+            entries.forEach(([k, d]) => {
                 const safeKey = k.replace(/"/g, '&quot;');
                 html += `
                     <tr class="draggable-row border-b hover:bg-indigo-50 transition-colors" 
@@ -950,15 +966,14 @@
             const svc = document.getElementById('serviceInput').value;
             if (!currentModel || !svc) return;
 
-            let newServiceObj = {};
-            rows.forEach(row => {
+            // ASSIGN EXPLICIT ORDER INDEX TO EACH ITEM
+            rows.forEach((row, index) => {
                 const key = row.getAttribute('data-key');
                 if (key && priceStructure[currentModel][svc][key]) {
-                     newServiceObj[key] = priceStructure[currentModel][svc][key];
+                     priceStructure[currentModel][svc][key].order = index;
                 }
             });
             
-            priceStructure[currentModel][svc] = newServiceObj;
             saveData(priceStructure);
         };
 
@@ -983,8 +998,19 @@
             
             const svc = document.getElementById('serviceInput').value;
             let temp = JSON.parse(JSON.stringify(priceStructure));
+            
+            // PRESERVE ORDER IF EDITING
+            const oldOrder = (temp[currentModel][svc][currentEditingQuality] || {}).order;
+            
             if(name !== currentEditingQuality) delete temp[currentModel][svc][currentEditingQuality];
-            temp[currentModel][svc][name] = { price, warranty, notes };
+            
+            temp[currentModel][svc][name] = { 
+                price, 
+                warranty, 
+                notes, 
+                order: oldOrder // Keep old order
+            };
+            
             saveData(temp);
             closeEditModal();
             displayPriceTable();
@@ -1074,7 +1100,8 @@
             
             while(temp[currentModel][svc][newName]) newName = `Linh kiện mới ${count++}`;
             
-            temp[currentModel][svc][newName] = { price: 0, warranty: "3 Tháng", notes: "" };
+            // New items get high order to appear at bottom
+            temp[currentModel][svc][newName] = { price: 0, warranty: "3 Tháng", notes: "", order: 99999 };
             saveData(temp);
             displayPriceTable();
             setTimeout(() => openEditModal(newName), 100);
