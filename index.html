@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Báo Giá Sửa Chữa (v4.3 Auto-Init)</title>
+    <title>Báo Giá Sửa Chữa (v4.4 Fast)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
     <style>
@@ -13,14 +13,16 @@
         .searchable-input { padding-right: 2.5rem; }
         .modal-backdrop { background-color: rgba(0, 0, 0, 0.6); backdrop-filter: blur(2px); }
         
+        /* Hiệu năng: Sử dụng contain để trình duyệt render nhanh hơn */
         .suggestions-container {
             position: absolute; z-index: 50; background-color: white;
             border: 1px solid #e5e7eb; border-top: none; 
             max-height: 60vh; overflow-y: auto; width: 100%;
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
             border-radius: 0 0 0.5rem 0.5rem;
+            contain: content; 
         }
-        .suggestion-item { padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #f3f4f6; }
+        .suggestion-item { padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #f3f4f6; content-visibility: auto; }
         .suggestion-item:last-child { border-bottom: none; }
         .suggestion-item:hover { background-color: #f1f5f9; }
         .active-suggestion { background-color: #e0e7ff !important; border-left: 3px solid #4f46e5; }
@@ -79,7 +81,7 @@
                     <svg class="w-6 h-6 sm:w-8 sm:h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
                     Tra Cứu Giá Nhanh
                 </h1>
-                <p class="text-xs text-gray-400 mt-1">Hệ thống báo giá (v4.3 Auto-Init)</p>
+                <p class="text-xs text-gray-400 mt-1">Hệ thống báo giá (v4.4 Performance)</p>
             </div>
             <div class="flex flex-col items-end">
                 <div class="flex gap-2 mb-1">
