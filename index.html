@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Báo Giá Sửa Chữa (v3.7 Stable)</title>
+    <title>Báo Giá Sửa Chữa (v3.8 Import Fix)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
     <style>
@@ -79,7 +79,7 @@
                     <svg class="w-6 h-6 sm:w-8 sm:h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
                     Tra Cứu Giá Nhanh
                 </h1>
-                <p class="text-xs text-gray-400 mt-1">Hệ thống báo giá (v3.7 Stable)</p>
+                <p class="text-xs text-gray-400 mt-1">Hệ thống báo giá (v3.8 Stable)</p>
             </div>
             <div class="flex flex-col items-end">
                 <div class="flex gap-2 mb-1">
@@ -194,14 +194,14 @@
         </div>
     </div>
 
-    <!-- All Services Modal (New Version) -->
+    <!-- All Services Modal (With Delete) -->
     <div id="allServicesModal" class="fixed inset-0 z-modal hidden flex items-center justify-center p-4 modal-backdrop">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl p-6 transform transition-all duration-300 scale-95 opacity-0 flex flex-col max-h-[90vh]" id="allServicesModalContent">
             <div class="flex justify-between items-center mb-4 border-b pb-2">
                 <h4 id="allServicesTitle" class="text-2xl font-bold text-gray-800">Chọn Dịch Vụ</h4>
                 <button onclick="closeAllServicesModal()" class="text-gray-400 hover:text-gray-600"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
             </div>
-            <p class="text-xs text-gray-500 mb-2 italic">Bấm vào tên để chọn, bấm vào thùng rác để xóa (Toàn hệ thống)</p>
+            <p class="text-xs text-gray-500 mb-2 italic">Bấm vào tên để chọn, bấm vào thùng rác đỏ để xóa vĩnh viễn (Toàn hệ thống)</p>
             <div id="allServicesGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 overflow-y-auto p-2"></div>
             <div class="mt-4 pt-2 border-t text-right">
                 <button onclick="closeAllServicesModal()" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg transition hover:bg-gray-400">Đóng</button>
@@ -214,12 +214,6 @@
         <div class="bg-white rounded-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
             <h4 class="text-xl font-bold mb-4">Quản Lý Dữ Liệu</h4>
             <div class="space-y-3">
-                <!-- Removed Old Service Manager Button -->
-                
-                <button onclick="rescueOldData()" class="w-full py-3 bg-yellow-50 text-yellow-700 font-bold rounded-lg border border-yellow-200 hover:bg-yellow-100 transition flex items-center justify-center">
-                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    Cứu Dữ Liệu Máy Này (Tìm bản lưu cũ)
-                </button>
                 <div class="border-t pt-3">
                     <p class="text-sm text-gray-500 mb-2">Nhập/Xuất File Excel (CSV)</p>
                     <div class="mb-3 p-3 bg-gray-50 rounded-lg border border-dashed border-gray-300 text-center">
@@ -229,7 +223,7 @@
                         </label>
                         <input type="file" id="csvFileInput" accept=".csv" class="hidden" onchange="handleFileUpload(this)">
                     </div>
-                    <textarea id="importTextarea" rows="4" class="w-full p-3 border border-gray-300 rounded-lg font-mono text-xs" placeholder="Hoặc dán trực tiếp dữ liệu CSV vào đây..."></textarea>
+                    <textarea id="importTextarea" rows="4" class="w-full p-3 border border-gray-300 rounded-lg font-mono text-xs" placeholder="Dữ liệu CSV sẽ hiện ở đây khi tải file..."></textarea>
                     <div class="flex gap-3 mt-2">
                         <button onclick="exportCSVData()" class="flex-1 py-2 bg-green-600 text-white rounded-lg font-bold shadow hover:bg-green-700 text-sm">Tải Xuống Excel</button>
                         <button onclick="importCSVData()" class="flex-1 py-2 bg-indigo-600 text-white rounded-lg font-bold shadow hover:bg-indigo-700 text-sm">Nhập Dữ Liệu</button>
@@ -570,44 +564,91 @@
         // Admin Helpers
         window.openAdminModal = () => document.getElementById('dataManagementModal').classList.remove('hidden');
         window.closeAdminModal = () => document.getElementById('dataManagementModal').classList.add('hidden');
-        window.rescueOldData = () => { const keys = ['local_pricing_data_v8', 'local_pricing_data']; for(let k of keys) { const d = localStorage.getItem(k); if(d && d.length > 5000) { if(confirm("Tìm thấy dữ liệu cũ. Khôi phục?")) { priceStructure = JSON.parse(d); const { doc, setDoc } = window.fbModules; setDoc(doc(db, COLLECTION_PATH, DOC_ID), { data: priceStructure }); refreshDataLists(); closeAdminModal(); } return; } } alert("Không tìm thấy dữ liệu cũ."); };
         
         window.confirmDeleteGlobalService = (s) => { itemToDelete = s; deleteMode = 'GLOBAL_SERVICE'; document.getElementById('deleteTitle').innerText = "Xóa Dịch Vụ Toàn Hệ Thống?"; document.getElementById('deleteItemName').innerText = s; document.getElementById('deleteConfirmModal').classList.remove('hidden'); };
         window.exportCSVData = () => { let csvContent = "\uFEFFModel,Dịch Vụ,Loại Linh Kiện,Giá,Bảo Hành,Ghi Chú\n"; Object.keys(priceStructure).forEach(model => { Object.keys(priceStructure[model]).forEach(service => { Object.keys(priceStructure[model][service]).forEach(quality => { const item = priceStructure[model][service][quality]; csvContent += `"${model.replace(/"/g, '""')}","${service.replace(/"/g, '""')}","${quality.replace(/"/g, '""')}",${item.price},"${item.warranty}","${item.notes}"\n`; }); }); }); const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.setAttribute("href", url); link.setAttribute("download", `bao_gia.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link); };
-        window.importCSVData = () => { 
+        
+        window.handleFileUpload = (input) => {
+            const file = input.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById('importTextarea').value = e.target.result;
+                showToast("Đã tải nội dung file. Bấm 'Nhập Dữ Liệu' để lưu.");
+            };
+            reader.readAsText(file);
+        };
+
+        window.importCSVData = async () => {
             const rawText = document.getElementById('importTextarea').value.trim();
             if (!rawText) return showToast("Vui lòng dán dữ liệu hoặc tải file CSV!", false);
+
+            // Auto-detect delimiter
+            const firstLine = rawText.split('\n')[0];
+            const delimiter = firstLine.includes(';') ? ';' : ',';
+
             const rows = rawText.split("\n");
             let importedCount = 0;
-            let temp = JSON.parse(JSON.stringify(priceStructure));
-            const simpleParse = (text) => { let p = '', row = [''], i = 0, s = !0; for (let l of text) { if ('"' === l) { if (s && l === p) row[i] += l; s = !s; } else if (',' === l && s) l = row[++i] = ''; else row[i] += l; p = l; } return row; }
+            let temp = JSON.parse(JSON.stringify(priceStructure)); 
+
+            // CSV Parser
+            const parseCSVLine = (text) => {
+                const result = [];
+                let cur = '';
+                let inQuote = false;
+                for (let i = 0; i < text.length; i++) {
+                    const char = text[i];
+                    if (char === '"') { inQuote = !inQuote; } 
+                    else if (char === delimiter && !inQuote) { result.push(cur); cur = ''; } 
+                    else { cur += char; }
+                }
+                result.push(cur);
+                return result.map(c => c.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
+            };
+
             for (let i = 1; i < rows.length; i++) {
                 if (!rows[i].trim()) continue;
-                const cols = simpleParse(rows[i]);
+                const cols = parseCSVLine(rows[i]);
                 if (cols.length >= 4) {
-                    const model = sanitizeKey(cols[0].replace(/^"|"$/g, ''));
-                    const service = sanitizeKey(cols[1].replace(/^"|"$/g, ''));
-                    const quality = cols[2].replace(/^"|"$/g, '').trim();
+                    const model = sanitizeKey(cols[0]);
+                    const service = sanitizeKey(cols[1]);
+                    const quality = cols[2];
                     const price = parseInt(cols[3].replace(/\D/g, '')) || 0;
-                    const warranty = cols[4] ? cols[4].replace(/^"|"$/g, '').trim() : "Không bảo hành";
-                    const notes = cols[5] ? cols[5].replace(/^"|"$/g, '').trim() : "";
+                    const warranty = cols[4] || "Không bảo hành";
+                    const notes = cols[5] || "";
+
                     if (model && service && quality) {
                         if (!temp[model]) temp[model] = {};
                         if (!temp[model][service]) temp[model][service] = {};
-                        const old = temp[model][service][quality];
-                        temp[model][service][quality] = { price, warranty, notes, order: old ? old.order : 9999 };
+                        const existing = temp[model][service][quality];
+                        temp[model][service][quality] = { price, warranty, notes, order: existing ? existing.order : 9999 };
                         importedCount++;
                     }
                 }
             }
+
             if (importedCount > 0) {
-                if(confirm(`Tìm thấy ${importedCount} dòng. Nhập?`)) {
-                    const { doc, setDoc } = window.fbModules;
-                    if(isOnline && db) setDoc(doc(db, COLLECTION_PATH, DOC_ID), { data: temp }, { merge: true });
-                    priceStructure = temp; localStorage.setItem('local_pricing_data_v8', JSON.stringify(priceStructure));
-                    refreshDataLists(); closeAdminModal(); showToast(`Đã nhập ${importedCount} dòng!`);
+                if(confirm(`Tìm thấy ${importedCount} mục hợp lệ. Bạn có muốn nhập vào hệ thống không?`)) {
+                    // Update Local
+                    priceStructure = temp;
+                    localStorage.setItem('local_pricing_data_v8', JSON.stringify(priceStructure));
+                    refreshDataLists();
+                    
+                    // Update Cloud
+                    if (isOnline && db) {
+                        try {
+                            const { doc, setDoc } = window.fbModules;
+                            document.getElementById('dataMode').innerText = "Đang nhập...";
+                            await setDoc(doc(db, COLLECTION_PATH, DOC_ID), { data: temp }, { merge: true });
+                            document.getElementById('dataMode').innerText = "Đã đồng bộ";
+                            showToast(`Đã nhập thành công ${importedCount} dòng!`);
+                        } catch(e) { console.error(e); showToast("Lỗi lưu Cloud: " + e.message, false); }
+                    } else { showToast(`Đã nhập Offline ${importedCount} dòng!`); }
+                    closeAdminModal();
+                    document.getElementById('importTextarea').value = '';
+                    document.getElementById('csvFileInput').value = '';
                 }
-            }
+            } else { showToast("Không tìm thấy dữ liệu hợp lệ trong file!", false); }
         };
 
         const updateSyncStatus = (status) => { const el = document.getElementById('syncStatus'); const txt = document.getElementById('dataMode'); if (status === 'online') { el.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse"></span> Online'; txt.innerText="Đã đồng bộ"; } else if (status === 'error') { el.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500 mr-2"></span> Lỗi'; } else if (status === 'connecting') { el.innerHTML = '<span class="w-2 h-2 rounded-full bg-yellow-500 mr-2 animate-spin"></span> Connecting...'; } else { el.innerHTML = '<span class="w-2 h-2 rounded-full bg-gray-400 mr-2"></span> Offline'; } };
@@ -669,7 +710,6 @@
             } 
         };
         
-        // --- UPDATED SHOW ALL SERVICES ---
         window.showAllServices = () => { 
             if(!currentModel) return; 
             const svcs = Object.keys(priceStructure[currentModel]||{}).sort(); 
