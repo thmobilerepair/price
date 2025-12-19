@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Báo Giá Sửa Chữa (v3.8 Import Fix)</title>
+    <title>Báo Giá Sửa Chữa (v4.0 Sync)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
     <style>
@@ -79,13 +79,14 @@
                     <svg class="w-6 h-6 sm:w-8 sm:h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
                     Tra Cứu Giá Nhanh
                 </h1>
-                <p class="text-xs text-gray-400 mt-1">Hệ thống báo giá (v3.8 Stable)</p>
+                <p class="text-xs text-gray-400 mt-1">Hệ thống báo giá (v4.0 Force Sync)</p>
             </div>
             <div class="flex flex-col items-end">
                 <div class="flex gap-2 mb-1">
-                    <button onclick="hardResetApp()" class="text-[10px] text-red-500 bg-red-50 px-2 py-1 rounded border border-red-200 hover:bg-red-100 flex items-center" title="Bấm vào đây nếu gặp lỗi">
-                        <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                        Reset Lỗi
+                    <!-- Nút Reset mạnh để ép đồng bộ -->
+                    <button onclick="forceSyncFromCloud()" class="text-[10px] text-white bg-blue-600 px-3 py-1 rounded border border-blue-700 hover:bg-blue-700 flex items-center shadow-sm" title="Tải bản mới nhất từ Cloud">
+                        <svg class="w-3 h-3 mr-1 animate-spin-hover" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        Đồng Bộ Ngay
                     </button>
                     <button onclick="resetConfig()" class="text-[10px] text-gray-400 hover:text-gray-600 bg-gray-50 px-2 py-1 rounded border border-gray-200">
                         Đăng xuất
@@ -267,7 +268,7 @@
         let isResetting = false; 
         let dragSrcRow = null;
 
-        const sanitizeKey = (key) => key.trim().replace(/[./#\[\]\\]/g, "_");
+        const sanitizeKey = (key) => key ? key.trim().replace(/[./#\[\]\\]/g, "_") : "";
 
         const generateDefaultData = () => {
             let data = {};
@@ -292,6 +293,7 @@
         };
 
         const performTransaction = async (manipulateFn) => {
+            // Optimistic Update (Local)
             priceStructure = manipulateFn(JSON.parse(JSON.stringify(priceStructure)));
             localStorage.setItem('local_pricing_data_v8', JSON.stringify(priceStructure));
             refreshDataLists(); 
@@ -300,36 +302,82 @@
                 const { doc, runTransaction } = window.fbModules;
                 const docRef = doc(db, COLLECTION_PATH, DOC_ID);
                 document.getElementById('dataMode').innerText = "Đang đồng bộ...";
+                
                 try {
                     await runTransaction(db, async (transaction) => {
                         const sfDoc = await transaction.get(docRef);
                         if (!sfDoc.exists()) throw "Doc missing";
+                        
                         let remoteData = sfDoc.data().data || {};
-                        remoteData = manipulateFn(remoteData);
+                        remoteData = manipulateFn(remoteData); // Apply logic to latest cloud data
+                        
                         transaction.update(docRef, { data: remoteData });
                     });
                     document.getElementById('dataMode').innerText = "Đã đồng bộ";
-                } catch (e) { console.error(e); showToast("Lỗi đồng bộ: " + e.message, false); }
-            } else { showToast("Đã lưu Offline"); }
+                } catch (e) {
+                    console.error(e);
+                    showToast("Lỗi đồng bộ: " + e.message, false);
+                }
+            } else {
+                showToast("Đã lưu Offline");
+            }
         };
 
+        // --- FORCE SYNC: THIS IS THE KEY FIX ---
+        window.forceSyncFromCloud = async () => {
+            if(!isOnline || !db) return showToast("Cần kết nối mạng để đồng bộ", false);
+            
+            const btn = document.querySelector('button[onclick="forceSyncFromCloud()"]');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = 'Đang tải...'; btn.disabled = true;
+
+            try {
+                const { doc, getDoc } = window.fbModules;
+                const docRef = doc(db, COLLECTION_PATH, DOC_ID);
+                const docSnap = await getDoc(docRef);
+                
+                if (docSnap.exists()) {
+                    const cloudData = docSnap.data().data || {};
+                    priceStructure = cloudData; // Hard override local
+                    localStorage.setItem('local_pricing_data_v8', JSON.stringify(priceStructure));
+                    refreshDataLists();
+                    showToast("Đã đồng bộ thành công từ Cloud!");
+                } else {
+                    showToast("Không tìm thấy dữ liệu trên Cloud!", false);
+                }
+            } catch(e) {
+                console.error(e);
+                showToast("Lỗi đồng bộ: " + e.message, false);
+            } finally {
+                btn.innerHTML = originalText; btn.disabled = false;
+            }
+        };
+
+        // --- 4. LOGIC ACTIONS (ROBUST) ---
         window.saveRowEdit = async () => {
             const svc = document.getElementById('serviceInput').value;
             const name = document.getElementById('editGradeInput').value.trim();
             const price = parseInt(document.getElementById('editPriceInput').value.replace(/,/g,'')) || 0;
             const notes = document.getElementById('editNotesInput').value.trim();
             const warranty = document.getElementById('editWarrantyNum').value + ' ' + document.getElementById('editWarrantyUnit').value;
+            
             const btn = document.getElementById('saveRowBtn');
             btn.innerText = "Đang lưu..."; btn.disabled = true;
+
             await performTransaction((data) => {
                 if(!data[currentModel]) data[currentModel] = {};
                 if(!data[currentModel][svc]) data[currentModel][svc] = {};
+                
                 const oldOrder = (data[currentModel][svc][currentEditingQuality] || {}).order || 9999;
+                
                 if(name !== currentEditingQuality) delete data[currentModel][svc][currentEditingQuality];
+                
                 data[currentModel][svc][name] = { price, warranty, notes, order: oldOrder };
                 return data;
             });
-            btn.innerText = "Lưu Thay Đổi"; btn.disabled = false; closeEditModal();
+
+            btn.innerText = "Lưu Thay Đổi"; btn.disabled = false;
+            closeEditModal();
         };
 
         window.handleAction = async () => {
@@ -337,6 +385,8 @@
             if(!val) return showToast("Vui lòng nhập tên!", false);
             val = sanitizeKey(val);
             const { type, action } = currentActionType;
+
+            // Capture critical state BEFORE transaction to ensure consistency
             const targetModel = currentModel;
             const targetSvc = document.getElementById('serviceInput').value;
 
@@ -347,26 +397,49 @@
                         data[val] = {};
                         const def = generateDefaultData();
                         const sampleModel = Object.keys(def)[0];
-                        Object.keys(def[sampleModel]).forEach(s => { data[val][s] = { "Standard Grade": { price: 0, warranty: "6 Tháng", notes: "", order: 1 } }; });
+                        Object.keys(def[sampleModel]).forEach(s => {
+                            data[val][s] = { "Standard Grade": { price: 0, warranty: "6 Tháng", notes: "", order: 1 } };
+                        });
                     } else {
-                        if(!data[targetModel]) data[targetModel] = {}; 
-                        if(!data[targetModel][val]) data[targetModel][val] = { "Standard Grade": { price: 0, warranty: "6 Tháng", notes: "", order: 1 } };
+                        // Add Service
+                        if(!data[targetModel]) data[targetModel] = {}; // Safety
+                        if(!data[targetModel][val]) {
+                            data[targetModel][val] = { "Standard Grade": { price: 0, warranty: "6 Tháng", notes: "", order: 1 } };
+                        }
                     }
                 } else {
+                    // Rename Logic
                     if (type === 'model') {
-                        if(data[targetModel]) { data[val] = data[targetModel]; delete data[targetModel]; }
+                        if(data[targetModel]) {
+                            data[val] = data[targetModel];
+                            delete data[targetModel];
+                        }
                     } else {
-                        if(data[targetModel] && data[targetModel][targetSvc]) { data[targetModel][val] = data[targetModel][targetSvc]; delete data[targetModel][targetSvc]; }
+                        // Rename Service
+                        if(data[targetModel] && data[targetModel][targetSvc]) {
+                            data[targetModel][val] = data[targetModel][targetSvc];
+                            delete data[targetModel][targetSvc];
+                        }
                     }
                 }
                 return data;
             });
 
-            if (action === 'rename' && type === 'model') currentModel = val;
+            // Update UI State immediately
+            if (action === 'rename') {
+                if (type === 'model') currentModel = val;
+            }
+
             closeActionModal();
             
-            if (type === 'model') { document.getElementById('modelInput').value = val; window.selectItem(val, 'model'); } 
-            else { document.getElementById('serviceInput').value = val; window.selectItem(val, 'service'); }
+            // Refresh Selection inputs
+            if (type === 'model') {
+                document.getElementById('modelInput').value = val;
+                window.selectItem(val, 'model');
+            } else {
+                document.getElementById('serviceInput').value = val;
+                window.selectItem(val, 'service');
+            }
         };
 
         window.executeDeleteAction = async () => {
@@ -377,14 +450,19 @@
 
             await performTransaction((data) => {
                 if(mode === 'GLOBAL_SERVICE') {
-                    Object.keys(data).forEach(m => { if(data[m][targetItem]) delete data[m][targetItem]; });
+                    Object.keys(data).forEach(m => {
+                        if(data[m][targetItem]) delete data[m][targetItem];
+                    });
                 } else if (mode === 'ROW') {
-                    if(data[targetModel] && data[targetModel][targetSvc]) delete data[targetModel][targetSvc][targetItem];
+                    if(data[targetModel] && data[targetModel][targetSvc]) {
+                        delete data[targetModel][targetSvc][targetItem];
+                    }
                 }
                 return data;
             });
             
             if(mode === 'GLOBAL_SERVICE') {
+                // Manually refresh manager list for instant feedback
                 allServices = allServices.filter(s => s !== targetItem);
                 if(!document.getElementById('allServicesModal').classList.contains('hidden')) window.showAllServices();
             } else {
@@ -395,10 +473,14 @@
 
         window.addQualityLevelRow = async () => {
             const svc = document.getElementById('serviceInput').value;
-            if (!currentModel || !priceStructure[currentModel] || !priceStructure[currentModel][svc]) return showToast("Vui lòng chọn dịch vụ!", false);
+            if (!currentModel || !priceStructure[currentModel] || !priceStructure[currentModel][svc]) {
+                 return showToast("Vui lòng chọn dịch vụ!", false);
+            }
+            
             showToast("Đang tạo dòng mới...");
             await performTransaction((data) => {
-                let newName = "Linh kiện mới"; let count = 1;
+                let newName = "Linh kiện mới";
+                let count = 1;
                 while(data[currentModel][svc][newName]) newName = `Linh kiện mới ${count++}`;
                 data[currentModel][svc][newName] = { price: 0, warranty: "3 Tháng", notes: "", order: 99999 };
                 return data;
@@ -409,18 +491,26 @@
             const rows = document.querySelectorAll('#priceComparisonTable tbody tr');
             const svc = document.getElementById('serviceInput').value;
             const newOrderMap = {};
-            rows.forEach((row, index) => { const key = row.getAttribute('data-key'); if (key) newOrderMap[key] = index; });
+            rows.forEach((row, index) => {
+                const key = row.getAttribute('data-key');
+                if (key) newOrderMap[key] = index;
+            });
+
             await performTransaction((data) => {
                 if(data[currentModel] && data[currentModel][svc]) {
-                    Object.keys(data[currentModel][svc]).forEach(k => { if(newOrderMap[k] !== undefined) data[currentModel][svc][k].order = newOrderMap[k]; });
+                    Object.keys(data[currentModel][svc]).forEach(k => {
+                        if(newOrderMap[k] !== undefined) data[currentModel][svc][k].order = newOrderMap[k];
+                    });
                 }
                 return data;
             });
         };
 
+        // --- 5. INITIALIZATION & HARD RESET ---
         window.hardResetApp = () => {
-            if(confirm("XÓA dữ liệu lỗi trên máy này và tải lại bản chuẩn từ Cloud?")) {
-                localStorage.removeItem('local_pricing_data_v8'); window.location.reload();
+            if(confirm("Hành động này sẽ XÓA dữ liệu lỗi trên máy này và tải lại bản chuẩn từ Cloud. Bạn có chắc chắn không?")) {
+                localStorage.removeItem('local_pricing_data_v8');
+                window.location.reload();
             }
         };
 
@@ -445,31 +535,47 @@
             const configStr = localStorage.getItem('my_firebase_config');
             if (localStorage.getItem('offline_mode')) { initOffline(); return; } 
             if (!configStr) return;
+            
             try {
                 const config = JSON.parse(configStr);
                 if(config.apiKey) document.getElementById('configIdDisplay').innerText = "ID: " + config.apiKey.substring(0, 5) + "...";
+                
                 const { initializeApp, getAuth, signInAnonymously, getFirestore, doc, onSnapshot } = window.fbModules;
-                const app = initializeApp(config); const auth = getAuth(app); db = getFirestore(app);
+                const app = initializeApp(config);
+                const auth = getAuth(app);
+                db = getFirestore(app);
+                
                 updateSyncStatus('connecting');
                 try { await signInAnonymously(auth); } catch(e) { console.error("Auth", e); }
+
                 onSnapshot(doc(db, COLLECTION_PATH, DOC_ID), (docSnap) => {
                     if (isResetting) return; 
                     if (docSnap.metadata.hasPendingWrites) return;
+
                     if (docSnap.exists()) {
                         const cloudData = docSnap.data().data || {};
+                        // Sanity Check for Empty/Null
                         if (!cloudData || Object.keys(cloudData).length === 0) {
                              const local = localStorage.getItem('local_pricing_data_v8');
                              if(local && local.length > 5000) {
                                  priceStructure = JSON.parse(local);
                                  const { doc, setDoc } = window.fbModules;
                                  setDoc(doc(db, COLLECTION_PATH, DOC_ID), { data: priceStructure });
-                             } else { priceStructure = generateDefaultData(); }
-                        } else { priceStructure = mergeWithDefaults(cloudData); }
+                             } else {
+                                 priceStructure = generateDefaultData();
+                             }
+                        } else {
+                             priceStructure = mergeWithDefaults(cloudData);
+                        }
+                        
                         localStorage.setItem('local_pricing_data_v8', JSON.stringify(priceStructure));
-                        updateSyncStatus('online'); refreshDataLists();
+                        updateSyncStatus('online');
+                        refreshDataLists();
+                        
                         const table = document.getElementById('priceComparisonTable');
                         if(!table.classList.contains('hidden')) {
-                            const rows = table.querySelectorAll('tr'); rows.forEach(r => r.classList.add('updated-row'));
+                            const rows = table.querySelectorAll('tr');
+                            rows.forEach(r => r.classList.add('updated-row'));
                             setTimeout(() => rows.forEach(r => r.classList.remove('updated-row')), 1500);
                         }
                     } else {
@@ -506,9 +612,14 @@
         const refreshDataLists = () => {
             if (!priceStructure) return;
             allModels = Object.keys(priceStructure).sort();
+            
+            // OPTIMIZED SERVICE EXTRACTION using Set
             const svcSet = new Set();
-            Object.values(priceStructure).forEach(m => { if(m) Object.keys(m).forEach(s => svcSet.add(s)); });
+            Object.values(priceStructure).forEach(m => {
+                if(m) Object.keys(m).forEach(s => svcSet.add(s));
+            });
             allServices = Array.from(svcSet).sort();
+            
             if (currentModel && document.getElementById('serviceInput').value) displayPriceTable();
         };
 
@@ -516,6 +627,7 @@
             const svc = document.getElementById('serviceInput').value;
             if (!currentModel || !priceStructure[currentModel] || !priceStructure[currentModel][svc]) return toggleTable(false);
             const data = priceStructure[currentModel][svc];
+            
             let entries = Object.entries(data);
             entries.sort((a, b) => {
                 const orderA = (a[1].order !== undefined) ? a[1].order : 9999;
@@ -523,10 +635,25 @@
                 if (orderA !== orderB) return orderA - orderB;
                 return a[0].localeCompare(b[0]);
             });
-            let html = `<table class="price-table w-full text-sm text-left text-gray-600"><thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b"><tr><th class="w-10 px-2 py-3"></th><th class="px-4 py-3 w-1/4">Loại Linh Kiện</th><th class="px-4 py-3 w-1/3">Ghi Chú</th><th class="px-4 py-3 text-right">Giá (LAK)</th><th class="px-4 py-3 text-center">Bảo Hành</th><th class="px-4 py-3 text-center">Sửa</th></tr></thead><tbody ondragover="handleDragOver(event)" ondrop="handleDrop(event)">`;
+
+            let html = `<table class="price-table w-full text-sm text-left text-gray-600">
+                <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b">
+                    <tr><th class="w-10 px-2 py-3"></th><th class="px-4 py-3 w-1/4">Loại Linh Kiện</th><th class="px-4 py-3 w-1/3">Ghi Chú</th><th class="px-4 py-3 text-right">Giá (LAK)</th><th class="px-4 py-3 text-center">Bảo Hành</th><th class="px-4 py-3 text-center">Sửa</th></tr>
+                </thead>
+                <tbody ondragover="handleDragOver(event)" ondrop="handleDrop(event)">`;
+            
             entries.forEach(([k, d]) => {
                 const safeKey = k.replace(/"/g, '&quot;');
-                html += `<tr class="draggable-row border-b hover:bg-indigo-50 transition-colors" draggable="true" data-key="${safeKey}" ondragstart="handleDragStart(event)" ondragenter="handleDragEnter(event)" ondragleave="handleDragLeave(event)" ondragend="handleDragEnd(event)"><td class="px-2 py-3 text-center"><div class="drag-handle" title="Kéo để sắp xếp"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg></div></td><td class="px-4 py-3 font-bold text-gray-800">${k}</td><td class="px-4 py-3 text-xs text-gray-500">${d.notes}</td><td class="px-4 py-3 text-right font-bold text-red-600">${formatMoney(d.price)}</td><td class="px-4 py-3 text-center text-xs bg-green-50 text-green-700 rounded font-semibold">${d.warranty}</td><td class="px-4 py-3 text-center flex justify-center gap-2"><button onclick="openEditModal('${safeKey.replace(/'/g, "\\'")}')" class="text-indigo-600 p-2 hover:bg-indigo-100 rounded-full"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button><button onclick="openDeleteConfirmModal('${safeKey.replace(/'/g, "\\'")}')" class="text-red-500 p-2 hover:bg-red-100 rounded-full"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button></td></tr>`;
+                html += `<tr class="draggable-row border-b hover:bg-indigo-50 transition-colors" draggable="true" data-key="${safeKey}" ondragstart="handleDragStart(event)" ondragenter="handleDragEnter(event)" ondragleave="handleDragLeave(event)" ondragend="handleDragEnd(event)">
+                        <td class="px-2 py-3 text-center"><div class="drag-handle" title="Kéo để sắp xếp"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg></div></td>
+                        <td class="px-4 py-3 font-bold text-gray-800">${k}</td>
+                        <td class="px-4 py-3 text-xs text-gray-500">${d.notes}</td>
+                        <td class="px-4 py-3 text-right font-bold text-red-600">${formatMoney(d.price)}</td>
+                        <td class="px-4 py-3 text-center text-xs bg-green-50 text-green-700 rounded font-semibold">${d.warranty}</td>
+                        <td class="px-4 py-3 text-center flex justify-center gap-2">
+                            <button onclick="openEditModal('${safeKey.replace(/'/g, "\\'")}')" class="text-indigo-600 p-2 hover:bg-indigo-100 rounded-full"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
+                            <button onclick="openDeleteConfirmModal('${safeKey.replace(/'/g, "\\'")}')" class="text-red-500 p-2 hover:bg-red-100 rounded-full"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                        </td></tr>`;
             });
             document.getElementById('priceComparisonTable').innerHTML = html + '</tbody></table>';
             document.getElementById('tableTitle').innerText = `${currentModel} - ${svc}`;
@@ -583,12 +710,16 @@
             const rawText = document.getElementById('importTextarea').value.trim();
             if (!rawText) return showToast("Vui lòng dán dữ liệu hoặc tải file CSV!", false);
 
-            // Auto-detect delimiter
-            const firstLine = rawText.split('\n')[0];
+            // Robust split handling \r, \n, or \r\n
+            const rows = rawText.split(/\r\n|\n|\r/);
+            if(rows.length < 2) return showToast("File CSV quá ngắn hoặc lỗi định dạng dòng!", false);
+
+            // Auto-detect delimiter from first line
+            const firstLine = rows[0];
             const delimiter = firstLine.includes(';') ? ';' : ',';
 
-            const rows = rawText.split("\n");
             let importedCount = 0;
+            // Deep copy existing structure so we merge, not replace
             let temp = JSON.parse(JSON.stringify(priceStructure)); 
 
             // CSV Parser
@@ -610,18 +741,22 @@
                 if (!rows[i].trim()) continue;
                 const cols = parseCSVLine(rows[i]);
                 if (cols.length >= 4) {
-                    const model = sanitizeKey(cols[0]);
-                    const service = sanitizeKey(cols[1]);
-                    const quality = cols[2];
-                    const price = parseInt(cols[3].replace(/\D/g, '')) || 0;
+                    const model = sanitizeKey(cols[0] || "");
+                    const service = sanitizeKey(cols[1] || "");
+                    const quality = (cols[2] || "").trim();
+                    const price = parseInt((cols[3] || "0").replace(/\D/g, '')) || 0;
                     const warranty = cols[4] || "Không bảo hành";
                     const notes = cols[5] || "";
 
                     if (model && service && quality) {
                         if (!temp[model]) temp[model] = {};
                         if (!temp[model][service]) temp[model][service] = {};
+                        
+                        // Preserve order if exists, otherwise new big number
                         const existing = temp[model][service][quality];
-                        temp[model][service][quality] = { price, warranty, notes, order: existing ? existing.order : 9999 };
+                        const order = existing ? existing.order : 9999;
+                        
+                        temp[model][service][quality] = { price, warranty, notes, order };
                         importedCount++;
                     }
                 }
@@ -639,11 +774,13 @@
                         try {
                             const { doc, setDoc } = window.fbModules;
                             document.getElementById('dataMode').innerText = "Đang nhập...";
+                            // Use setDoc with merge: true for bulk update
                             await setDoc(doc(db, COLLECTION_PATH, DOC_ID), { data: temp }, { merge: true });
                             document.getElementById('dataMode').innerText = "Đã đồng bộ";
                             showToast(`Đã nhập thành công ${importedCount} dòng!`);
                         } catch(e) { console.error(e); showToast("Lỗi lưu Cloud: " + e.message, false); }
                     } else { showToast(`Đã nhập Offline ${importedCount} dòng!`); }
+                    
                     closeAdminModal();
                     document.getElementById('importTextarea').value = '';
                     document.getElementById('csvFileInput').value = '';
@@ -721,13 +858,11 @@
                 const container = document.createElement('div');
                 container.className = 'flex items-center gap-1 group';
                 
-                // Select Button
                 const btn = document.createElement('button'); 
                 btn.className = 'flex-grow bg-white border border-gray-200 text-gray-700 p-3 rounded shadow hover:bg-gray-50 text-left truncate'; 
                 btn.innerText = s; 
                 btn.onclick = () => { window.selectItem(s, 'service'); window.closeAllServicesModal(); }; 
                 
-                // Delete Button (Small Trash Icon)
                 const delBtn = document.createElement('button');
                 delBtn.className = 'flex-none bg-red-50 text-red-500 p-3 rounded border border-red-100 hover:bg-red-100 transition';
                 delBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>';
