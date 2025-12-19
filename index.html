@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Báo Giá Sửa Chữa (v4.2 Global Fix)</title>
+    <title>Báo Giá Sửa Chữa (v4.3 Auto-Init)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
     <style>
@@ -79,7 +79,7 @@
                     <svg class="w-6 h-6 sm:w-8 sm:h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
                     Tra Cứu Giá Nhanh
                 </h1>
-                <p class="text-xs text-gray-400 mt-1">Hệ thống báo giá (v4.2 Global Fix)</p>
+                <p class="text-xs text-gray-400 mt-1">Hệ thống báo giá (v4.3 Auto-Init)</p>
             </div>
             <div class="flex flex-col items-end">
                 <div class="flex gap-2 mb-1">
@@ -889,7 +889,21 @@
                 
                 btn.className = `flex-grow ${bgClass} p-3 rounded shadow hover:bg-gray-50 text-left truncate transition`; 
                 btn.innerText = s; 
-                btn.onclick = () => { window.selectItem(s, 'service'); window.closeAllServicesModal(); }; 
+                // --- FIX: Auto-init service when selecting from Global List ---
+                btn.onclick = () => { 
+                    const serviceName = s;
+                    // If service doesn't exist in current model, init it
+                    if (!priceStructure[currentModel][serviceName]) {
+                         performTransaction((data) => {
+                             if(!data[currentModel][serviceName]) {
+                                 data[currentModel][serviceName] = { "Standard Grade": { price: 0, warranty: "6 Tháng", notes: "", order: 1 } };
+                             }
+                             return data;
+                         });
+                    }
+                    window.selectItem(serviceName, 'service'); 
+                    window.closeAllServicesModal(); 
+                }; 
                 
                 const delBtn = document.createElement('button');
                 delBtn.className = 'flex-none bg-red-50 text-red-500 p-3 rounded border border-red-100 hover:bg-red-100 transition';
